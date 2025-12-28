@@ -1,0 +1,62 @@
+# Primitive Library
+
+This crate is the ergo runtime plus its bundled primitive library (the standard deterministic compute/trigger/action/source primitives that run inside it). The runtime defines the ontology and execution physics; the primitive library is the content executed within it.
+
+Primitives are deterministic, manifest-defined units of computation, triggering, and action. They are enforced by runtime contracts and are the single source of truth for execution.
+
+Terminology:
+- Runtime: ontology + execution physics (validation, execution engine, wiring rules)
+- Primitive library: stdlib of primitives packaged inside this runtime crate
+
+This repository is:
+- ontology-first
+- deterministic by construction
+- intentionally boring
+
+It is NOT:
+- a product
+- a UI
+- a strategy builder
+- an orchestrator
+
+Downstream systems depend on this library.
+This library depends on nothing downstream.
+
+## Core stdlib wiring
+
+- Sources: `number_source`, `boolean_source`
+- Computes: `const_number`, `const_bool`, `add`, `subtract`, `multiply`, `divide`, `negate`, `gt`, `lt`, `eq`, `neq`, `and`, `or`, `not`, `select`
+- Trigger: `emit_if_true`
+- Actions: `ack_action`, `annotate_action`
+
+Helpers:
+- `catalog::build_core_catalog()` builds a `PrimitiveCatalog` for validation/inference
+- `catalog::core_registries()` registers all stdlib implementations into runtime registries
+
+## Hello world graph (reference)
+
+This graph compares two static numbers, emits an event if `a > b`, and acknowledges it.
+
+```
+number_source(value=3.0) -> gt:a
+number_source(value=1.0) -> gt:b
+gt.result -> emit_if_true.input
+emit_if_true.event -> ack_action.event
+```
+
+Sketch in Rust:
+
+```rust
+use primitive_library::catalog::{build_core_catalog, core_registries};
+use primitive_library::cluster::{ExpandedEndpoint, ExpandedGraph, ExpandedNode, OutputPortSpec, OutputRef};
+use primitive_library::runtime::{run, types::{ExecutionContext, Registries}};
+
+let expanded = ExpandedGraph { /* nodes + edges per diagram above */ };
+let catalog = build_core_catalog();
+let regs = core_registries().unwrap();
+let registries = Registries { sources: &regs.sources, computes: &regs.computes, triggers: &regs.triggers, actions: &regs.actions };
+let ctx = ExecutionContext { trigger_state: Default::default() };
+let report = run(&expanded, &catalog, &registries, &ctx)?;
+```
+
+The reference graph is also exercised in `runtime/tests.rs::hello_world_graph_executes_with_core_catalog_and_registries`.

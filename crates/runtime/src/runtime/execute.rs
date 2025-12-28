@@ -1,0 +1,349 @@
+use std::collections::HashMap;
+
+use crate::action::ActionValue;
+use crate::cluster::PrimitiveKind;
+use crate::trigger::{TriggerState, TriggerValue};
+
+use super::types::{
+    Endpoint, ExecError, ExecutionContext, ExecutionReport, Registries, RuntimeEvent, RuntimeValue,
+    ValidatedEdge, ValidatedGraph, ValidatedNode,
+};
+
+pub fn execute(
+    graph: &ValidatedGraph,
+    registries: &Registries,
+    ctx: &ExecutionContext,
+) -> Result<ExecutionReport, ExecError> {
+    let mut node_outputs: HashMap<String, HashMap<String, RuntimeValue>> = HashMap::new();
+    let mut trigger_state = ctx.trigger_state.clone();
+
+    for node_id in &graph.topo_order {
+        let node = graph.nodes.get(node_id).expect("validated node missing");
+
+        let inputs = collect_inputs(node_id, &node.inputs, &graph.edges, &node_outputs)?;
+
+        let outputs = match node.kind {
+            PrimitiveKind::Source => execute_source(node, inputs, registries)?,
+            PrimitiveKind::Compute => execute_compute(node, inputs, registries)?,
+            PrimitiveKind::Trigger => execute_trigger(node, inputs, registries, &mut trigger_state)?,
+            PrimitiveKind::Action => execute_action(node, inputs, registries)?,
+        };
+
+        node_outputs.insert(node_id.clone(), outputs);
+    }
+
+    let mut outputs: HashMap<String, RuntimeValue> = HashMap::new();
+    for out in &graph.boundary_outputs {
+        if let Some(node_outs) = node_outputs.get(&out.maps_to.node_id) {
+            if let Some(val) = node_outs.get(&out.maps_to.port_name) {
+                outputs.insert(out.name.clone(), val.clone());
+            } else {
+                return Err(ExecError::MissingOutput {
+                    node: out.maps_to.node_id.clone(),
+                    output: out.maps_to.port_name.clone(),
+                });
+            }
+        } else {
+            return Err(ExecError::MissingOutput {
+                node: out.maps_to.node_id.clone(),
+                output: out.maps_to.port_name.clone(),
+            });
+        }
+    }
+
+    Ok(ExecutionReport { outputs })
+}
+
+fn collect_inputs(
+    target: &str,
+    input_specs: &[crate::cluster::InputMetadata],
+    edges: &[ValidatedEdge],
+    node_outputs: &HashMap<String, HashMap<String, RuntimeValue>>,
+) -> Result<HashMap<String, RuntimeValue>, ExecError> {
+    let mut inputs: HashMap<String, RuntimeValue> = HashMap::new();
+
+    for edge in edges {
+        let Endpoint::NodePort { node_id: to_node, port_name: to_port } = &edge.to;
+        if to_node == target {
+            let Endpoint::NodePort { node_id: from, port_name: from_port } = &edge.from;
+            let outs = node_outputs
+                .get(from)
+                .ok_or_else(|| ExecError::MissingOutput {
+                    node: from.clone(),
+                    output: from_port.clone(),
+                })?;
+            let val = outs.get(from_port).ok_or_else(|| ExecError::MissingOutput {
+                node: from.clone(),
+                output: from_port.clone(),
+            })?;
+            inputs.insert(to_port.clone(), val.clone());
+        }
+    }
+
+    // fill missing required
+    for spec in input_specs {
+        if spec.required && !inputs.contains_key(&spec.name) {
+            return Err(ExecError::MissingOutput {
+                node: target.to_string(),
+                output: spec.name.clone(),
+            });
+        }
+    }
+
+    Ok(inputs)
+}
+
+fn execute_source(
+    node: &ValidatedNode,
+    _inputs: HashMap<String, RuntimeValue>,
+    registries: &Registries,
+) -> Result<HashMap<String, RuntimeValue>, ExecError> {
+    let primitive = registries
+        .sources
+        .get(&node.impl_id)
+        .ok_or_else(|| ExecError::UnknownPrimitive {
+            id: node.impl_id.clone(),
+            version: node.version.clone(),
+        })?;
+
+    let mut mapped_parameters: HashMap<String, crate::source::ParameterValue> = HashMap::new();
+    for (name, val) in &node.parameters {
+        let mapped = map_to_source_parameter_value(val).ok_or_else(|| {
+            ExecError::ParameterTypeConversionFailed {
+                node: node.runtime_id.clone(),
+                parameter: name.clone(),
+            }
+        })?;
+        mapped_parameters.insert(name.clone(), mapped);
+    }
+
+    let outputs = primitive.produce(&mapped_parameters);
+    Ok(outputs
+        .into_iter()
+        .map(|(k, v)| (k, map_common_value(v)))
+        .collect())
+}
+
+fn execute_compute(
+    node: &ValidatedNode,
+    inputs: HashMap<String, RuntimeValue>,
+    registries: &Registries,
+) -> Result<HashMap<String, RuntimeValue>, ExecError> {
+    let primitive = registries
+        .computes
+        .get(&node.impl_id)
+        .ok_or_else(|| ExecError::UnknownPrimitive {
+            id: node.impl_id.clone(),
+            version: node.version.clone(),
+        })?;
+
+    let mut mapped_inputs: HashMap<String, crate::common::Value> = HashMap::new();
+    for (name, val) in inputs {
+        let mapped = map_to_compute_value(&val).ok_or_else(|| ExecError::TypeConversionFailed {
+            node: node.runtime_id.clone(),
+            port: name.clone(),
+        })?;
+        mapped_inputs.insert(name, mapped);
+    }
+
+    let mut mapped_parameters: HashMap<String, crate::common::Value> = HashMap::new();
+    for (name, val) in &node.parameters {
+        let mapped = map_to_compute_parameter_value(val).ok_or_else(|| {
+            ExecError::ParameterTypeConversionFailed {
+                node: node.runtime_id.clone(),
+                parameter: name.clone(),
+            }
+        })?;
+        mapped_parameters.insert(name.clone(), mapped);
+    }
+
+    let outputs = primitive.compute(&mapped_inputs, &mapped_parameters, None);
+    Ok(outputs.into_iter().map(|(k, v)| (k, map_common_value(v))).collect())
+}
+
+fn execute_trigger(
+    node: &ValidatedNode,
+    inputs: HashMap<String, RuntimeValue>,
+    registries: &Registries,
+    state: &mut HashMap<String, TriggerState>,
+) -> Result<HashMap<String, RuntimeValue>, ExecError> {
+    let primitive = registries
+        .triggers
+        .get(&node.impl_id)
+        .ok_or_else(|| ExecError::UnknownPrimitive {
+            id: node.impl_id.clone(),
+            version: node.version.clone(),
+        })?;
+
+    let mut mapped_inputs: HashMap<String, TriggerValue> = HashMap::new();
+    for (name, val) in inputs {
+        let mapped = map_to_trigger_value(&val).ok_or_else(|| ExecError::TypeConversionFailed {
+            node: node.runtime_id.clone(),
+            port: name.clone(),
+        })?;
+        mapped_inputs.insert(name, mapped);
+    }
+
+    let mut mapped_parameters: HashMap<String, crate::trigger::ParameterValue> = HashMap::new();
+    for (name, val) in &node.parameters {
+        let mapped = map_to_trigger_parameter_value(val).ok_or_else(|| {
+            ExecError::ParameterTypeConversionFailed {
+                node: node.runtime_id.clone(),
+                parameter: name.clone(),
+            }
+        })?;
+        mapped_parameters.insert(name.clone(), mapped);
+    }
+
+    let node_state = state.entry(node.runtime_id.clone()).or_default();
+    let outputs = primitive.evaluate(&mapped_inputs, &mapped_parameters, Some(node_state));
+    Ok(outputs.into_iter().map(|(k, v)| (k, map_trigger_value(v))).collect())
+}
+
+fn execute_action(
+    node: &ValidatedNode,
+    inputs: HashMap<String, RuntimeValue>,
+    registries: &Registries,
+) -> Result<HashMap<String, RuntimeValue>, ExecError> {
+    let primitive = registries
+        .actions
+        .get(&node.impl_id)
+        .ok_or_else(|| ExecError::UnknownPrimitive {
+            id: node.impl_id.clone(),
+            version: node.version.clone(),
+        })?;
+
+    let mut mapped_inputs: HashMap<String, ActionValue> = HashMap::new();
+    for (name, val) in inputs {
+        let mapped = map_to_action_value(&val, &node.runtime_id, &name)?;
+        mapped_inputs.insert(name, mapped);
+    }
+
+    let mut mapped_parameters: HashMap<String, crate::action::ParameterValue> = HashMap::new();
+    for (name, val) in &node.parameters {
+        let mapped = map_to_action_parameter_value(val).ok_or_else(|| {
+            ExecError::ParameterTypeConversionFailed {
+                node: node.runtime_id.clone(),
+                parameter: name.clone(),
+            }
+        })?;
+        mapped_parameters.insert(name.clone(), mapped);
+    }
+
+    let outputs = primitive.execute(&mapped_inputs, &mapped_parameters);
+    Ok(outputs.into_iter().map(|(k, v)| (k, map_action_value(v))).collect())
+}
+
+fn map_common_value(v: crate::common::Value) -> RuntimeValue {
+    match v {
+        crate::common::Value::Number(n) => RuntimeValue::Number(n),
+        crate::common::Value::Series(s) => RuntimeValue::Series(s),
+        crate::common::Value::Bool(b) => RuntimeValue::Bool(b),
+    }
+}
+
+fn map_to_compute_value(v: &RuntimeValue) -> Option<crate::common::Value> {
+    match v {
+        RuntimeValue::Number(n) => Some(crate::common::Value::Number(*n)),
+        RuntimeValue::Series(s) => Some(crate::common::Value::Series(s.clone())),
+        RuntimeValue::Bool(b) => Some(crate::common::Value::Bool(*b)),
+        _ => None,
+    }
+}
+
+fn map_to_compute_parameter_value(
+    v: &crate::cluster::ParameterValue,
+) -> Option<crate::common::Value> {
+    match v {
+        crate::cluster::ParameterValue::Int(i) => Some(crate::common::Value::Number(*i as f64)),
+        crate::cluster::ParameterValue::Number(n) => Some(crate::common::Value::Number(*n)),
+        crate::cluster::ParameterValue::Bool(b) => Some(crate::common::Value::Bool(*b)),
+        _ => None,
+    }
+}
+
+fn map_trigger_value(v: TriggerValue) -> RuntimeValue {
+    match v {
+        TriggerValue::Number(n) => RuntimeValue::Number(n),
+        TriggerValue::Series(s) => RuntimeValue::Series(s),
+        TriggerValue::Bool(b) => RuntimeValue::Bool(b),
+        TriggerValue::Event(e) => RuntimeValue::Event(RuntimeEvent::Trigger(e)),
+    }
+}
+
+fn map_to_trigger_value(v: &RuntimeValue) -> Option<TriggerValue> {
+    match v {
+        RuntimeValue::Number(n) => Some(TriggerValue::Number(*n)),
+        RuntimeValue::Series(s) => Some(TriggerValue::Series(s.clone())),
+        RuntimeValue::Bool(b) => Some(TriggerValue::Bool(*b)),
+        RuntimeValue::Event(RuntimeEvent::Trigger(e)) => Some(TriggerValue::Event(e.clone())),
+        _ => None,
+    }
+}
+
+fn map_to_trigger_parameter_value(
+    v: &crate::cluster::ParameterValue,
+) -> Option<crate::trigger::ParameterValue> {
+    match v {
+        crate::cluster::ParameterValue::Int(i) => Some(crate::trigger::ParameterValue::Int(*i)),
+        crate::cluster::ParameterValue::Number(n) => Some(crate::trigger::ParameterValue::Number(*n)),
+        crate::cluster::ParameterValue::Bool(b) => Some(crate::trigger::ParameterValue::Bool(*b)),
+        crate::cluster::ParameterValue::String(s) => {
+            Some(crate::trigger::ParameterValue::String(s.clone()))
+        }
+        crate::cluster::ParameterValue::Enum(e) => Some(crate::trigger::ParameterValue::Enum(e.clone())),
+    }
+}
+
+fn map_action_value(v: ActionValue) -> RuntimeValue {
+    match v {
+        ActionValue::Event(e) => RuntimeValue::Event(RuntimeEvent::Action(e)),
+        ActionValue::Number(n) => RuntimeValue::Number(n),
+        ActionValue::Bool(b) => RuntimeValue::Bool(b),
+        ActionValue::String(s) => RuntimeValue::String(s),
+    }
+}
+
+fn map_to_action_value(
+    v: &RuntimeValue,
+    node: &str,
+    port: &str,
+) -> Result<ActionValue, ExecError> {
+    match v {
+        RuntimeValue::Event(RuntimeEvent::Action(e)) => Ok(ActionValue::Event(e.clone())),
+        RuntimeValue::Event(RuntimeEvent::Trigger(_)) => {
+            Ok(ActionValue::Event(crate::action::ActionOutcome::Attempted))
+        }
+        RuntimeValue::Number(n) => Ok(ActionValue::Number(*n)),
+        RuntimeValue::Bool(b) => Ok(ActionValue::Bool(*b)),
+        RuntimeValue::String(s) => Ok(ActionValue::String(s.clone())),
+        _ => Err(ExecError::TypeConversionFailed {
+            node: node.to_string(),
+            port: port.to_string(),
+        }),
+    }
+}
+
+fn map_to_action_parameter_value(
+    v: &crate::cluster::ParameterValue,
+) -> Option<crate::action::ParameterValue> {
+    match v {
+        crate::cluster::ParameterValue::Int(i) => Some(crate::action::ParameterValue::Int(*i)),
+        crate::cluster::ParameterValue::Number(n) => Some(crate::action::ParameterValue::Number(*n)),
+        crate::cluster::ParameterValue::Bool(b) => Some(crate::action::ParameterValue::Bool(*b)),
+        crate::cluster::ParameterValue::String(s) => Some(crate::action::ParameterValue::String(s.clone())),
+        crate::cluster::ParameterValue::Enum(e) => Some(crate::action::ParameterValue::Enum(e.clone())),
+    }
+}
+
+fn map_to_source_parameter_value(
+    v: &crate::cluster::ParameterValue,
+) -> Option<crate::source::ParameterValue> {
+    match v {
+        crate::cluster::ParameterValue::Int(i) => Some(crate::source::ParameterValue::Int(*i)),
+        crate::cluster::ParameterValue::Number(n) => Some(crate::source::ParameterValue::Number(*n)),
+        crate::cluster::ParameterValue::Bool(b) => Some(crate::source::ParameterValue::Bool(*b)),
+        crate::cluster::ParameterValue::String(s) => Some(crate::source::ParameterValue::String(s.clone())),
+        crate::cluster::ParameterValue::Enum(e) => Some(crate::source::ParameterValue::Enum(e.clone())),
+    }
+}

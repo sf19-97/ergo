@@ -1,0 +1,245 @@
+Below is Action Primitive Manifest v0.
+This is the authoritative contract. Treat it as law.
+
+⸻
+
+Action Primitive Manifest — v0
+
+1. Definition
+
+An Action Primitive is a deterministic command that attempts to apply a
+side effect to an external execution environment,
+gated by an event, and emits a terminal outcome event.
+
+Actions:
+	•	are the only primitives allowed to cause side effects
+	•	do not compute signals
+	•	do not infer intent
+	•	do not decide when to act (triggers do that)
+	•	only decide what to attempt
+
+An action answers one question:
+
+“Given this event, what command should be attempted?”
+
+⸻
+
+2. Required Manifest Fields
+
+Every action primitive must declare all of the following.
+
+⸻
+
+2.1 Identity
+
+id: string
+version: string
+kind: action
+
+Rules:
+	•	id is unique and stable
+	•	version is semver or monotonic
+	•	kind must be action
+
+⸻
+
+2.2 Inputs
+
+inputs:
+  - name: string
+    type: event | number | bool | string
+    required: true
+    cardinality: single
+
+Rules:
+	•	At least one input must be an event
+	•	Inputs are explicit, named, and typed
+	•	No implicit access to external state or context
+	•	All required context must be provided upstream
+
+⸻
+
+2.3 Outputs
+
+outputs:
+  - name: outcome
+    type: event
+
+Rules:
+	•	Actions always emit exactly one outcome event
+	•	Outcome event represents:
+	•	attempted
+	•	succeeded
+	•	rejected
+	•	cancelled
+	•	failed
+	•	No additional outputs allowed in v0
+
+⸻
+
+2.4 Parameters
+
+parameters:
+  - name: string
+    type: int | number | bool | string | enum
+    default: any
+    bounds: optional
+
+Rules:
+	•	Parameters are static presets
+	•	Parameters must be serializable
+	•	Parameters do not change at runtime
+	•	No hidden parameters allowed
+
+⸻
+
+2.5 Execution Semantics
+
+execution:
+  deterministic: true
+  retryable: false
+
+Rules:
+	•	Determinism is required
+	•	Retry behavior (if any) must be explicit
+	•	Action may be attempted at most once per triggering event in v0
+
+⸻
+
+2.6 State
+
+state:
+  allowed: false
+
+Rules:
+	•	Action primitives may not hold internal state
+	•	All stateful behavior must live upstream (compute / trigger)
+	•	Idempotency must be handled by the orchestrator
+
+⸻
+
+2.7 Side Effects
+
+side_effects: true
+
+Rules:
+	•	Action primitives are the only primitives where this is allowed
+	•	Side effects are limited to declared external operations
+	•	No filesystem, network, or logging side effects in v0
+
+⸻
+
+3. Outcome Event Semantics (Critical)
+
+An outcome event is:
+	•	discrete
+	•	emitted exactly once per action attempt
+	•	terminal (no persistence)
+
+Rules:
+	•	Outcome events do not carry payloads in v0
+	•	Outcome events may be consumed by:
+	•	triggers
+	•	downstream orchestration logic
+	•	Outcome events must always be emitted, even on failure
+
+⸻
+
+4. Prohibited Behavior
+
+An action primitive may not:
+	•	Emit multiple events
+	•	Emit continuous values
+	•	Perform computation
+	•	Read execution mode
+	•	Hold internal state
+	•	Chain side effects
+	•	Access undeclared inputs or parameters
+	•	Bypass manifest enforcement
+
+Violation invalidates the primitive.
+
+⸻
+
+5. Composition Rule
+
+Actions terminate intent.
+
+	•	Compute produces values
+	•	Trigger produces events
+	•	Action attempts execution
+
+Actions may not:
+	•	feed directly into compute
+	•	generate new signals
+	•	trigger other actions directly
+
+Any further behavior must be mediated by triggers.
+
+⸻
+
+6. Orchestrator Contract
+
+The orchestrator guarantees:
+	•	Inputs match declared types
+	•	Triggering event occurred
+	•	Action is attempted exactly once
+	•	Outcome event is emitted
+
+The orchestrator does not:
+	•	infer retries
+	•	interpret outcome semantics
+	•	guarantee operation success
+	•	alter parameters
+
+⸻
+
+7. Canonical Action Examples (v0)
+
+submit_command
+	•	inputs: trigger:event, command_spec:string
+	•	outputs: outcome:event
+	•	state: false
+
+cancel_command
+	•	inputs: trigger:event, command_id:string
+	•	outputs: outcome:event
+	•	state: false
+
+modify_command
+	•	inputs: trigger:event, command_id:string, new_spec:string
+	•	outputs: outcome:event
+	•	state: false
+
+cancel_all
+	•	inputs: trigger:event
+	•	outputs: outcome:event
+	•	state: false
+
+⸻
+
+8. Scope
+
+This document defines Action Primitive Manifest v0.
+
+Out of scope:
+	•	alerts
+	•	notifications
+	•	payload-carrying outcomes
+	•	custom code execution
+	•	retries
+	•	partial outcomes as first-class events
+
+These belong to later versions.
+
+⸻
+
+9. Freeze Point
+
+This contract is intentionally minimal.
+
+Do not expand it yet.
+Do not generalize it yet.
+Do not weaken enforcement.
+
+⸻

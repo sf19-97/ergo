@@ -1,0 +1,34 @@
+use crate::action::{
+    ActionKind, ActionPrimitiveManifest, ActionValueType, ExecutionSpec, InputSpec, OutputSpec,
+    ParameterSpec, ParameterValue, StateSpec,
+};
+
+pub fn ack_action_manifest() -> ActionPrimitiveManifest {
+    ActionPrimitiveManifest {
+        id: "ack_action".to_string(),
+        version: "0.1.0".to_string(),
+        kind: ActionKind::Action,
+        inputs: vec![InputSpec {
+            name: "event".to_string(),
+            value_type: ActionValueType::Event,
+            required: true,
+            cardinality: crate::action::Cardinality::Single,
+        }],
+        outputs: vec![OutputSpec {
+            name: "outcome".to_string(),
+            value_type: ActionValueType::Event,
+        }],
+        parameters: vec![ParameterSpec {
+            name: "accept".to_string(),
+            value_type: ParameterValue::Bool(true).value_type(),
+            default: Some(ParameterValue::Bool(true)),
+            bounds: None,
+        }],
+        execution: ExecutionSpec {
+            deterministic: true,
+            retryable: false,
+        },
+        state: StateSpec { allowed: false },
+        side_effects: true,
+    }
+}
