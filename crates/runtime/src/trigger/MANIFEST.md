@@ -95,22 +95,53 @@ Rules:
 
 ⸻
 
-2.6 State
+2.6 State (Prohibited)
 
+```yaml
 state:
-  allowed: true | false
+  allowed: false  # REQUIRED — triggers are stateless
   description: optional
+```
 
-Rules:
-	•	State is allowed only if:
-	•	deterministic
-	•	resettable
-	•	time-indexed
-	•	Typical valid state:
-	•	previous value (for edge detection)
-	•	debounce counters
-	•	once/confirm flags
-	•	External or hidden state is forbidden
+**Triggers are stateless.** The `state.allowed` field must be `false` for all trigger
+implementations. The registry will reject any trigger manifest with `allowed: true`.
+
+#### Execution-Local Bookkeeping
+
+Trigger implementations may use ephemeral, execution-local bookkeeping during evaluation
+(temporary variables, scratch registers). This is permitted because it:
+
+- Is not observable by the runtime
+- Is not serialized or captured
+- Is not preserved across evaluations
+- Does not participate in causality
+
+Such bookkeeping does not constitute "state" in the system's ontological sense.
+
+#### Temporal Patterns
+
+Behaviors requiring cross-evaluation memory are **not triggers**. They are compositional
+patterns (clusters) that must be built from:
+
+| Primitive | Role in Pattern |
+|-----------|-----------------|
+| Source | Read persisted state from environment |
+| Compute | Evaluate policy / transform state |
+| Trigger | Emit event based on computed boolean |
+| Action | Write updated state to environment |
+
+Examples of temporal patterns (implemented as clusters, not triggers):
+- `OnceCluster` — emit only on first occurrence
+- `CountCluster` — count events
+- `LatchCluster` — set/reset state machine
+- `DebounceCluster` — cooldown gating
+
+#### Amendment Record
+
+> **Amended 2025-12-28** by Sebastian (Freeze Authority)
+>
+> Prior language allowing `state.allowed: true` was a semantic error. Triggers are
+> ontologically stateless. This field must always be `false`.
 
 ⸻
 
