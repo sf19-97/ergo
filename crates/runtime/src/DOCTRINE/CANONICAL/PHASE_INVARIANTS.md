@@ -237,7 +237,7 @@ These invariants hold across all phases. Violation at any point is a system-leve
 ### Notes
 
 - Validation phase is well-covered by existing executor tests.
-- **V.5:** Validation confirms structural wiring (Action has Trigger input). Runtime enforcement (R.7) must additionally gate execution on `TriggerEvent::Emitted`. Currently: Validation ✓, Runtime ✗ (gap).
+- **V.5:** Validation confirms structural wiring (Action has Trigger input). Runtime enforcement (R.7) additionally gates execution on `TriggerEvent::Emitted`. Both validation and runtime enforcement are now complete.
 
 ---
 
@@ -259,7 +259,7 @@ These invariants hold across all phases. Violation at any point is a system-leve
 | R.4 | Action failure aborts subsequent actions in same pass | execution_model.md §7 | — | — | — | ✓ |
 | R.5 | Trigger state resets only at lifecycle boundaries | execution_model.md §5 | — | — | — | — |
 | R.6 | Outputs are deterministic given inputs + state | execution_model.md §8 | — | — | — | ✓ |
-| R.7 | Actions execute only when trigger event emitted | execution_model.md §7 | — | — | — | — |
+| R.7 | Actions execute only when trigger event emitted | execution_model.md §7 | — | — | — | ✓ |
 
 ### Notes
 
@@ -270,7 +270,10 @@ These invariants hold across all phases. Violation at any point is a system-leve
   - No separate test needed — enforcement is structural via wiring matrix validation.
 - **R.4:** ✅ **CLOSED (by design).** `Result::Err` propagation via `?` is sufficient. `ActionOutcome::Failed` is data, not control flow — structural halt must be expressed via Trigger gating/wiring, not implicit runtime payload semantics.
 - **R.5:** Lifecycle boundaries are orchestrator-defined. Enforcement is outside current scope.
-- **R.7:** ⚠️ **VIOLATION DETECTED.** Current implementation executes all Actions unconditionally in topological order. The orchestrator contract guarantees "Triggering event occurred" (MANIFEST.md §6), but `map_to_action_value` erases Emitted/NotEmitted distinction and runtime does not gate Action execution. Fix required: runtime must check trigger input value before executing Action. This is a bug fix, not a spec change.
+- **R.7:** ✅ **CLOSED.** Runtime now gates Action execution on `TriggerEvent::Emitted`. Implementation:
+  - `should_skip_action()` in execute.rs checks for any `TriggerEvent::NotEmitted` input (AND semantics)
+  - Skipped actions return `ActionOutcome::Skipped` for Event outputs
+  - Test: `r7_action_skipped_when_trigger_not_emitted` verifies enforcement
 
 ---
 
@@ -380,7 +383,7 @@ No implementation required. State is already fully externalized and governed by 
 | ~~R.3~~ | ~~No same-pass action observation~~ | ~~Compositionally enforced via F.2, X.5~~ | ~~LOW~~ | ✅ CLOSED |
 | ~~X.7~~ | ~~Compute inputs ≥1~~ | ~~Validation missing~~ | ~~HIGH~~ | ✅ CLOSED |
 | ~~R.4~~ | ~~Action failure aborts subsequent actions~~ | ~~Closed by design — Result::Err propagation~~ | ~~LOW~~ | ✅ CLOSED |
-| R.7 | Actions execute only when trigger emitted | Runtime gating missing | BLOCKER | ⚠️ OPEN |
+| ~~R.7~~ | ~~Actions execute only when trigger emitted~~ | ~~Runtime gating missing~~ | ~~BLOCKER~~ | ✅ CLOSED |
 | REP-6 | Stateful trigger state captured | Replay will diverge on stateful triggers | MEDIUM | ⚠️ DEFERRED |
 
 ---
@@ -432,3 +435,4 @@ Changes to this document require the same review bar as changes to frozen specs.
 | v0.9 | 2025-12-27 | Claude Prime | Added Orchestration Phase (CXT-1, SUP-1–7) and Replay Phase (REP-1–5) |
 | v0.10 | 2025-12-27 | Claude Prime | Supervisor + Replay freeze declaration (Stage C complete); Stage D verification declared |
 | v0.11 | 2025-12-28 | Claude Prime | R.7 violation detected (Action gating); REP-6 gap added (stateful trigger capture); V.5 note updated |
+| v0.12 | 2025-12-28 | Claude Code | R.7 closed — runtime gating implemented; ActionOutcome::Skipped added; test added |

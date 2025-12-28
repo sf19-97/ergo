@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crate::action::ActionValue;
-use crate::cluster::PrimitiveKind;
-use crate::trigger::{TriggerState, TriggerValue};
+use crate::action::{ActionOutcome, ActionValue};
+use crate::cluster::{PrimitiveKind, ValueType};
+use crate::trigger::{TriggerEvent, TriggerState, TriggerValue};
 
 use super::types::{
     Endpoint, ExecError, ExecutionContext, ExecutionReport, Registries, RuntimeEvent, RuntimeValue,
@@ -28,7 +28,15 @@ pub fn execute(
             PrimitiveKind::Trigger => {
                 execute_trigger(node, inputs, registries, &mut trigger_state)?
             }
-            PrimitiveKind::Action => execute_action(node, inputs, registries)?,
+            PrimitiveKind::Action => {
+                // R.7: Actions execute only when all trigger event inputs are Emitted.
+                // If any Event input is TriggerEvent::NotEmitted, skip execution.
+                if should_skip_action(&inputs) {
+                    produce_skipped_outputs(node)
+                } else {
+                    execute_action(node, inputs, registries)?
+                }
+            }
         };
 
         node_outputs.insert(node_id.clone(), outputs);
@@ -381,4 +389,35 @@ fn map_to_source_parameter_value(
             Some(crate::source::ParameterValue::Enum(e.clone()))
         }
     }
+}
+
+/// R.7 gating: Returns true if any Event input is TriggerEvent::NotEmitted.
+/// Uses AND semantics: all trigger events must be Emitted for action to execute.
+fn should_skip_action(inputs: &HashMap<String, RuntimeValue>) -> bool {
+    inputs.values().any(|v| {
+        matches!(
+            v,
+            RuntimeValue::Event(RuntimeEvent::Trigger(TriggerEvent::NotEmitted))
+        )
+    })
+}
+
+/// Produce outputs for a skipped action. Event outputs get ActionOutcome::Skipped.
+fn produce_skipped_outputs(node: &ValidatedNode) -> HashMap<String, RuntimeValue> {
+    node.outputs
+        .iter()
+        .map(|(name, meta)| {
+            let value = match meta.value_type {
+                ValueType::Event => {
+                    RuntimeValue::Event(RuntimeEvent::Action(ActionOutcome::Skipped))
+                }
+                // Non-event outputs use sensible defaults (actions are terminal per F.2).
+                ValueType::Number => RuntimeValue::Number(0.0),
+                ValueType::Bool => RuntimeValue::Bool(false),
+                ValueType::String => RuntimeValue::String(String::new()),
+                ValueType::Series => RuntimeValue::Series(vec![]),
+            };
+            (name.clone(), value)
+        })
+        .collect()
 }

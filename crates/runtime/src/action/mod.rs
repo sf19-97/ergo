@@ -24,6 +24,8 @@ pub enum ActionOutcome {
     Rejected,
     Cancelled,
     Failed,
+    /// Action was never attempted because gating trigger emitted NotEmitted.
+    Skipped,
 }
 
 #[derive(Debug, Clone, PartialEq)]

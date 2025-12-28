@@ -582,3 +582,161 @@ fn validation_fails_on_missing_required_input() {
         other => panic!("Expected MissingRequiredInput, got {:?}", other),
     }
 }
+
+/// R.7: Actions execute only when trigger event emitted.
+/// When trigger emits NotEmitted, action should return Skipped (not execute).
+#[test]
+fn r7_action_skipped_when_trigger_not_emitted() {
+    // Same structure as hello_world_graph, but with values that cause trigger to NOT emit.
+    // src_a=1.0, src_b=3.0 means gt(1.0, 3.0) = false, so emit_if_true emits NotEmitted.
+    let mut nodes = HashMap::new();
+    nodes.insert(
+        "src_a".to_string(),
+        ExpandedNode {
+            runtime_id: "src_a".to_string(),
+            authoring_path: vec![],
+            implementation: crate::cluster::ImplementationInstance {
+                impl_id: "number_source".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            parameters: HashMap::from([(
+                "value".to_string(),
+                crate::cluster::ParameterValue::Number(1.0), // a < b
+            )]),
+        },
+    );
+    nodes.insert(
+        "src_b".to_string(),
+        ExpandedNode {
+            runtime_id: "src_b".to_string(),
+            authoring_path: vec![],
+            implementation: crate::cluster::ImplementationInstance {
+                impl_id: "number_source".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            parameters: HashMap::from([(
+                "value".to_string(),
+                crate::cluster::ParameterValue::Number(3.0), // a < b, so gt returns false
+            )]),
+        },
+    );
+    nodes.insert(
+        "gt1".to_string(),
+        ExpandedNode {
+            runtime_id: "gt1".to_string(),
+            authoring_path: vec![],
+            implementation: crate::cluster::ImplementationInstance {
+                impl_id: "gt".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            parameters: HashMap::new(),
+        },
+    );
+    nodes.insert(
+        "emit".to_string(),
+        ExpandedNode {
+            runtime_id: "emit".to_string(),
+            authoring_path: vec![],
+            implementation: crate::cluster::ImplementationInstance {
+                impl_id: "emit_if_true".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            parameters: HashMap::new(),
+        },
+    );
+    nodes.insert(
+        "act".to_string(),
+        ExpandedNode {
+            runtime_id: "act".to_string(),
+            authoring_path: vec![],
+            implementation: crate::cluster::ImplementationInstance {
+                impl_id: "ack_action".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            parameters: HashMap::from([(
+                "accept".to_string(),
+                crate::cluster::ParameterValue::Bool(true),
+            )]),
+        },
+    );
+
+    let edges = vec![
+        crate::cluster::ExpandedEdge {
+            from: ExpandedEndpoint::NodePort {
+                node_id: "src_a".to_string(),
+                port_name: "value".to_string(),
+            },
+            to: ExpandedEndpoint::NodePort {
+                node_id: "gt1".to_string(),
+                port_name: "a".to_string(),
+            },
+        },
+        crate::cluster::ExpandedEdge {
+            from: ExpandedEndpoint::NodePort {
+                node_id: "src_b".to_string(),
+                port_name: "value".to_string(),
+            },
+            to: ExpandedEndpoint::NodePort {
+                node_id: "gt1".to_string(),
+                port_name: "b".to_string(),
+            },
+        },
+        crate::cluster::ExpandedEdge {
+            from: ExpandedEndpoint::NodePort {
+                node_id: "gt1".to_string(),
+                port_name: "result".to_string(),
+            },
+            to: ExpandedEndpoint::NodePort {
+                node_id: "emit".to_string(),
+                port_name: "input".to_string(),
+            },
+        },
+        crate::cluster::ExpandedEdge {
+            from: ExpandedEndpoint::NodePort {
+                node_id: "emit".to_string(),
+                port_name: "event".to_string(),
+            },
+            to: ExpandedEndpoint::NodePort {
+                node_id: "act".to_string(),
+                port_name: "event".to_string(),
+            },
+        },
+    ];
+
+    let expanded = ExpandedGraph {
+        nodes,
+        edges,
+        boundary_inputs: Vec::new(),
+        boundary_outputs: vec![crate::cluster::OutputPortSpec {
+            name: "action_outcome".to_string(),
+            maps_to: crate::cluster::OutputRef {
+                node_id: "act".to_string(),
+                port_name: "outcome".to_string(),
+            },
+        }],
+    };
+
+    let catalog = build_core_catalog();
+    let registries = core_registries().unwrap();
+    let registries = Registries {
+        sources: &registries.sources,
+        computes: &registries.computes,
+        triggers: &registries.triggers,
+        actions: &registries.actions,
+    };
+
+    let ctx = ExecutionContext {
+        trigger_state: HashMap::new(),
+    };
+
+    let report = run(&expanded, &catalog, &registries, &ctx).unwrap();
+
+    // R.7 enforcement: Action should be Skipped, not Attempted/Filled
+    assert_eq!(
+        report.outputs.get("action_outcome"),
+        Some(&RuntimeValue::Event(
+            crate::runtime::types::RuntimeEvent::Action(crate::action::ActionOutcome::Skipped)
+        )),
+        "R.7: Action must return Skipped when gating trigger emits NotEmitted"
+    );
+}
