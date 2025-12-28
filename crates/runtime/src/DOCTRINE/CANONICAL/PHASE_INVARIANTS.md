@@ -35,6 +35,7 @@ This checklist draws from:
 - `execution_model.md` (frozen)
 - `V0_FREEZE.md` (frozen)
 - `adapter_contract.md` (frozen)
+- `SUPERVISOR.md` (frozen)
 - `AUTHORING_LAYER.md` (stable)
 - `CLUSTER_SPEC.md` (stable)
 
@@ -268,6 +269,91 @@ These invariants hold across all phases. Violation at any point is a system-leve
 
 ---
 
+## 7. Orchestration Phase
+
+**Scope:** Supervisor scheduling of episodes.
+
+**Source:** SUPERVISOR.md (frozen)
+
+**Entry invariants:**
+- Graph is validated (all V.* invariants hold)
+- Adapter is available and compliant
+
+### Invariants
+
+| ID | Invariant | Spec | Type | Assertion | Validation | Test |
+|----|-----------|:----:|:----:|:---------:|:----------:|:----:|
+| CXT-1 | ExecutionContext is adapter-only | SUPERVISOR.md §3 | ✓ | — | — | ✓ |
+| SUP-1 | Supervisor is graph-identity fixed | SUPERVISOR.md §3 | ✓ | — | — | — |
+| SUP-2 | Supervisor is strategy-neutral | SUPERVISOR.md §3 | ✓ | — | — | ✓ |
+| SUP-3 | Supervisor decisions are replayable | SUPERVISOR.md §3 | — | — | — | ✓ |
+| SUP-4 | Retries only on mechanical failure | SUPERVISOR.md §3 | ✓ | — | — | ✓ |
+| SUP-5 | ErrKind is mechanical only | SUPERVISOR.md §3 | ✓ | — | — | — |
+| SUP-6 | Episode atomicity is invocation-scoped | SUPERVISOR.md §3 | — | — | — | — |
+| SUP-7 | DecisionLog is write-only | SUPERVISOR.md §3 | ✓ | — | — | ✓ |
+
+### Notes
+
+- **CXT-1:** `pub(crate)` constructor; compile_fail doctests verify no external construction.
+- **SUP-1:** Private `graph_id` field with no setters; set only at construction.
+- **SUP-2:** `RuntimeInvoker::run()` returns `RunTermination` only; no `RunResult` exposure.
+- **SUP-4:** `should_retry()` matches only `NetworkTimeout|AdapterUnavailable|RuntimeError|TimedOut`.
+- **SUP-5:** `ErrKind` enum contains only mechanical variants; no domain-flavored errors.
+- **SUP-7:** `DecisionLog` trait has only `fn log()`; `records()` is on concrete impl, not trait.
+
+---
+
+## 8. Replay Phase
+
+**Scope:** Deterministic capture and verification of episode execution.
+
+**Source:** SUPERVISOR.md §2.5, crates/adapter/src/capture.rs, crates/supervisor/src/replay.rs
+
+**Entry invariants:**
+- Capture bundle is well-formed
+- All recorded events have valid hashes
+
+### Invariants
+
+| ID | Invariant | Spec | Type | Assertion | Validation | Test |
+|----|-----------|:----:|:----:|:---------:|:----------:|:----:|
+| REP-1 | Capture records are self-validating | — | — | — | ✓ | ✓ |
+| REP-2 | Rehydration is deterministic | — | — | — | — | ✓ |
+| REP-3 | Fault injection keys on EventId only | — | ✓ | — | — | ✓ |
+| REP-4 | Capture/runtime type separation | — | ✓ | — | — | — |
+| REP-5 | No wall-clock time in supervisor | — | — | — | — | ✓ |
+
+### Notes
+
+- **REP-1:** `validate_hash()` in capture.rs uses SHA256 to verify payload integrity.
+- **REP-2:** `rehydrate()` uses only record fields; no external state dependency.
+- **REP-3:** `FaultRuntimeHandle` explicitly discards `graph_id` and `ctx.inner()`; keys on `EventId` only.
+- **REP-4:** `ExecutionContext` has no serde derives. Capture types (`ExternalEventRecord`, `EpisodeInvocationRecord`) are separate from runtime types (`ExternalEvent`, `DecisionLogEntry`).
+- **REP-5:** Test at `replay_harness.rs:150-157` enforces no `SystemTime` usage in supervisor.
+
+---
+
+## Supervisor + Replay Freeze Declaration
+
+**Effective:** 2025-12-27
+
+The Orchestration Phase (§7) and Replay Phase (§8) implementations are frozen at this point. The following constraints are now in force:
+
+1. **CXT-1 through SUP-7** are enforced as specified in SUPERVISOR.md
+2. **REP-1 through REP-5** are enforced via capture.rs and replay.rs
+3. **Capture schema** (`ExternalEventRecord`, `EpisodeInvocationRecord`) is stable
+4. **Replay harness API** (`replay()`, `rehydrate()`, `validate_hash()`) is stable
+
+This freeze applies to:
+- `crates/adapter/src/lib.rs` (ExternalEvent, ExecutionContext, RuntimeInvoker, FaultRuntimeHandle)
+- `crates/adapter/src/capture.rs`
+- `crates/supervisor/src/lib.rs` (Supervisor, DecisionLog, DecisionLogEntry)
+- `crates/supervisor/src/replay.rs`
+
+**To unfreeze:** Requires joint escalation per AGENT_CONTRACT.md v1.1.
+
+---
+
 # Appendix A: Gap Summary
 
 | ID | Invariant | Issue | Priority | Status |
@@ -306,6 +392,7 @@ It joins the frozen doctrine set:
 - `execution_model.md`
 - `V0_FREEZE.md`
 - `adapter_contract.md`
+- `SUPERVISOR.md`
 
 And the stable specification set:
 - `AUTHORING_LAYER.md`
@@ -327,3 +414,5 @@ Changes to this document require the same review bar as changes to frozen specs.
 | v0.6 | 2025-12-21 | Claude Code | R.3 closed — compositionally enforced via F.2, X.5 |
 | v0.7 | 2025-12-22 | Claude Code | X.7 closed — validation added to compute/registry.rs; R.4 closed by design |
 | v0.8 | 2025-12-22 | Claude Prime | Core v0.1 freeze declared |
+| v0.9 | 2025-12-27 | Claude Prime | Added Orchestration Phase (CXT-1, SUP-1–7) and Replay Phase (REP-1–5) |
+| v0.10 | 2025-12-27 | Claude Prime | Supervisor + Replay freeze declaration (Stage C complete) |
