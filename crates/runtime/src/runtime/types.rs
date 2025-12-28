@@ -56,10 +56,22 @@ pub struct ValidatedGraph {
 pub enum ValidationError {
     CycleDetected,
     UnknownNode(String),
-    MissingPrimitive { id: String, version: String },
-    InvalidEdgeKind { from: PrimitiveKind, to: PrimitiveKind },
-    MissingRequiredInput { node: String, input: String },
-    MissingInputMetadata { node: String, input: String },
+    MissingPrimitive {
+        id: String,
+        version: String,
+    },
+    InvalidEdgeKind {
+        from: PrimitiveKind,
+        to: PrimitiveKind,
+    },
+    MissingRequiredInput {
+        node: String,
+        input: String,
+    },
+    MissingInputMetadata {
+        node: String,
+        input: String,
+    },
     TypeMismatch {
         from: String,
         output: String,
@@ -69,8 +81,13 @@ pub enum ValidationError {
         got: ValueType,
     },
     ActionNotGated(String),
-    MissingOutputMetadata { node: String, output: String },
-    ExternalInputNotAllowed { name: String },
+    MissingOutputMetadata {
+        node: String,
+        output: String,
+    },
+    ExternalInputNotAllowed {
+        name: String,
+    },
 }
 
 #[derive(Debug)]
@@ -82,7 +99,7 @@ pub enum ExecError {
     MissingOutput { node: String, output: String },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExecutionContext {
     pub trigger_state: HashMap<String, TriggerState>,
 }
