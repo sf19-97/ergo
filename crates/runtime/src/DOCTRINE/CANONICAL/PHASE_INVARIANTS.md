@@ -1,5 +1,7 @@
 # Phase Invariants — v0
 
+**Tracked invariants:** 64
+
 This document defines the invariants that must hold at each phase boundary in the system. It is the authoritative reference for what is true, where that truth is enforced, and what happens if it is violated.
 
 **An invariant without an enforcement locus is not an invariant. It is a wish.**
@@ -354,6 +356,12 @@ This freeze applies to:
 
 ---
 
+# Stage D Verification (stress test)
+
+No implementation required. State is already fully externalized and governed by existing invariants (CXT-1, SUP-*, REP-*). Stage D consists of stress-testing replay determinism and orchestration boundaries; any failures indicate invariant regression and require escalation.
+
+---
+
 # Appendix A: Gap Summary
 
 | ID | Invariant | Issue | Priority | Status |
@@ -415,4 +423,4 @@ Changes to this document require the same review bar as changes to frozen specs.
 | v0.7 | 2025-12-22 | Claude Code | X.7 closed — validation added to compute/registry.rs; R.4 closed by design |
 | v0.8 | 2025-12-22 | Claude Prime | Core v0.1 freeze declared |
 | v0.9 | 2025-12-27 | Claude Prime | Added Orchestration Phase (CXT-1, SUP-1–7) and Replay Phase (REP-1–5) |
-| v0.10 | 2025-12-27 | Claude Prime | Supervisor + Replay freeze declaration (Stage C complete) |
+| v0.10 | 2025-12-27 | Claude Prime | Supervisor + Replay freeze declaration (Stage C complete); Stage D verification declared |

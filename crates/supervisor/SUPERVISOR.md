@@ -62,6 +62,8 @@ Episode properties:
 The Episode is the unit of Supervisor reasoning. The Supervisor schedules, invokes, and observes
 termination of episodes. It does not decompose them.
 
+**Lifecycle Scope:** Supervisor lifecycle is orchestration-only: instantiate per graph, run episodes, discard. Trigger state is episode-scoped. Each episode begins with fresh state (`HashMap::new()`). Cross-episode continuity is achieved exclusively via external writes (Actions) and reads (Sources). This is enforced by construction: all `ExternalEvent` factories in `ergo-adapter` create fresh `RuntimeExecutionContext`.
+
 ### 2.2 ExecutionContext
 
 **ExecutionContext** is the input payload provided to an episode.
@@ -433,6 +435,7 @@ Changes require joint escalation per AGENT_CONTRACT.md v1.1.
 | v0.1 | 2025-12-27 | Claude (Structural Auditor) | Initial draft |
 | v0.2 | 2025-12-27 | Claude (Structural Auditor) | Added SUP-7 (DecisionLog write-only); ChatGPT polish edits |
 | v0.3 | 2025-12-27 | Claude Code | Freeze finalization; Sebastian approval |
+| v0.4 | 2025-12-27 | Claude Prime | Added lifecycle scope note (§2.1) — state is episode-scoped by construction |
 
 ---
 
