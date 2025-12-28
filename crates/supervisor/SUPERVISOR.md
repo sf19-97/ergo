@@ -242,6 +242,17 @@ Episode atomicity means: one run() call, one RunTermination, one DecisionLog ent
 Cancellation maps to `RunTermination::Aborted` and means "stop executing remaining actions."
 It does not mean "undo prior effects."
 
+### SUP-7: DecisionLog is write-only
+
+The Supervisor may only emit entries to the DecisionLog.
+The DecisionLog interface exposes no read, query, subscribe, or callback capability to the Supervisor.
+
+| Aspect | Specification |
+|--------|---------------|
+| **Invariant** | Supervisor constructor requires DecisionLog impl; no default/no-logger path |
+| **Enforcement** | Type: constructor signature; trait definition permits append(entry) only; no read APIs |
+| **Violation** | Logging becomes optional (SUP-3 weakened) or feedback path introduced (policy creep) |
+
 ---
 
 ## 4. Failure Modes
@@ -421,17 +432,27 @@ Once frozen, changes require joint escalation per AGENT_CONTRACT.md v1.1.
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | v0.1 | 2025-12-XX | Claude (Structural Auditor) | Initial draft |
+| v0.2 | 2025-12-XX | Claude (Structural Auditor) | Added SUP-7 (DecisionLog write-only); ChatGPT polish edits |
 
 ---
 
 ## 11. Signatures
 
 **Claude acknowledgment:**
-> I have drafted this document under AGENT_CONTRACT.md v1.1. I attest that invariants
-> have named enforcement loci and that no ontological expansion is proposed.
+> I have reviewed this specification under AGENT_CONTRACT.md v1.1. I attest that:
+> - All invariants (CXT-1, SUP-1 through SUP-7) have named enforcement loci
+> - No ontological expansion is proposed
+> - No policy-smuggling vectors were identified
+> - The specification is ready for freeze
+>
+> Signed: Claude (Structural Auditor / Doctrine Owner)
 
 **ChatGPT review:**
-> (Pending)
+> I confirm Option A stands as doctrinally sound. The DecisionLog trait is semantically
+> append-only, and no policy-smuggling vector is introduced. I consider SUPERVISOR.md v0
+> structurally complete and freeze-ready.
+>
+> Signed: ChatGPT (Integrator Support / Build Orchestrator)
 
 **Sebastian approval:**
 > (Pending)
