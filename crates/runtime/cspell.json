@@ -84,7 +84,15 @@
     "Registries",
 
     "rustfmt",
-    "clippy"
+    "clippy",
+
+    "replayable",
+    "doctests",
+    "serde",
+    "Emitted",
+    "NotEmitted",
+    "iff",
+    "compositionally"
   ],
   "ignorePaths": [
     "target/",

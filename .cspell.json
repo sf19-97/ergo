@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
+  "version": "0.2",
+  "language": "en",
+  "import": ["./crates/runtime/cspell.json"],
+  "ignorePaths": [
+    "target/",
+    "Cargo.lock",
+    ".git/"
+  ]
+}
