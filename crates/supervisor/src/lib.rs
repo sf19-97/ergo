@@ -1,7 +1,13 @@
 use std::collections::VecDeque;
 use std::time::Duration;
 
-use ergo_adapter::{ErrKind, EventTime, ExternalEvent, GraphId, RunTermination, RuntimeHandle};
+use ergo_adapter::{
+    capture::ExternalEventRecord, ErrKind, EventId, EventTime, ExternalEvent, GraphId,
+    RunTermination, RuntimeHandle, RuntimeInvoker,
+};
+use serde::{Deserialize, Serialize};
+
+pub mod replay;
 
 /// SUP-7: DecisionLog is write-only. No read/query surface is ever exposed.
 pub trait DecisionLog {
@@ -31,7 +37,8 @@ impl DeterministicClock {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct EpisodeId(u64);
 
 impl EpisodeId {
@@ -44,7 +51,7 @@ impl EpisodeId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Decision {
     Invoke,
     Skip,
@@ -54,14 +61,52 @@ pub enum Decision {
 #[derive(Debug, Clone)]
 pub struct DecisionLogEntry {
     pub graph_id: GraphId,
+    pub event_id: EventId,
     pub event: ExternalEvent,
     pub decision: Decision,
-    pub scheduled_for: Option<Duration>,
+    pub schedule_at: Option<EventTime>,
     pub episode_id: EpisodeId,
+    pub deadline: Option<Duration>,
     pub termination: RunTermination,
+    pub retry_count: usize,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EpisodeInvocationRecord {
+    pub event_id: EventId,
+    pub decision: Decision,
+    pub schedule_at: Option<EventTime>,
+    pub episode_id: EpisodeId,
+    pub deadline: Option<Duration>,
+    pub termination: RunTermination,
+    pub retry_count: usize,
+}
+
+impl From<&DecisionLogEntry> for EpisodeInvocationRecord {
+    fn from(entry: &DecisionLogEntry) -> Self {
+        Self {
+            event_id: entry.event_id.clone(),
+            decision: entry.decision,
+            schedule_at: entry.schedule_at,
+            episode_id: entry.episode_id,
+            deadline: entry.deadline,
+            termination: entry.termination.clone(),
+            retry_count: entry.retry_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaptureBundle {
+    pub capture_version: String,
+    pub graph_id: GraphId,
+    pub config: Constraints,
+    pub events: Vec<ExternalEventRecord>,
+    pub decisions: Vec<EpisodeInvocationRecord>,
+    pub adapter_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Constraints {
     pub max_in_flight: Option<usize>,
     pub max_per_window: Option<usize>,
@@ -70,24 +115,44 @@ pub struct Constraints {
     pub max_retries: usize,
 }
 
-pub struct Supervisor<L: DecisionLog> {
+pub struct Supervisor<L: DecisionLog, R: RuntimeInvoker> {
     graph_id: GraphId,
     constraints: Constraints,
     decision_log: L,
-    runtime: RuntimeHandle,
+    runtime: R,
     next_episode_id: u64,
     in_flight: usize,
     recent_invocations: VecDeque<EventTime>,
     clock: DeterministicClock,
 }
 
-impl<L: DecisionLog> Supervisor<L> {
+impl<L: DecisionLog> Supervisor<L, RuntimeHandle> {
     pub fn new(graph_id: GraphId, constraints: Constraints, decision_log: L) -> Self {
         Self {
             graph_id,
             constraints,
             decision_log,
             runtime: RuntimeHandle::default(),
+            next_episode_id: 0,
+            in_flight: 0,
+            recent_invocations: VecDeque::new(),
+            clock: DeterministicClock::new(),
+        }
+    }
+}
+
+impl<L: DecisionLog, R: RuntimeInvoker> Supervisor<L, R> {
+    pub fn with_runtime(
+        graph_id: GraphId,
+        constraints: Constraints,
+        decision_log: L,
+        runtime: R,
+    ) -> Self {
+        Self {
+            graph_id,
+            constraints,
+            decision_log,
+            runtime,
             next_episode_id: 0,
             in_flight: 0,
             recent_invocations: VecDeque::new(),
@@ -102,22 +167,25 @@ impl<L: DecisionLog> Supervisor<L> {
 
         if self.is_concurrency_saturated() {
             self.log_decision(
-                event,
+                &event,
                 Decision::Defer,
-                Some(Duration::ZERO),
+                Some(now),
                 episode_id,
                 RunTermination::Aborted,
+                0,
             );
             return;
         }
 
         if let Some(delay) = self.rate_limit_delay(now) {
+            let schedule_at = Some(now.saturating_add(delay));
             self.log_decision(
-                event,
+                &event,
                 Decision::Defer,
-                Some(delay),
+                schedule_at,
                 episode_id,
                 RunTermination::Aborted,
+                0,
             );
             return;
         }
@@ -127,11 +195,19 @@ impl<L: DecisionLog> Supervisor<L> {
             self.recent_invocations.push_back(now);
         }
 
-        let termination = self.invoke_with_retries(event.context());
+        let (termination, retry_count) =
+            self.invoke_with_retries(event.event_id(), event.context());
 
         self.in_flight = self.in_flight.saturating_sub(1);
 
-        self.log_decision(event, Decision::Invoke, None, episode_id, termination);
+        self.log_decision(
+            &event,
+            Decision::Invoke,
+            None,
+            episode_id,
+            termination,
+            retry_count,
+        );
     }
 
     fn next_episode_id(&mut self) -> EpisodeId {
@@ -171,20 +247,24 @@ impl<L: DecisionLog> Supervisor<L> {
         None
     }
 
-    fn invoke_with_retries(&self, ctx: &ergo_adapter::ExecutionContext) -> RunTermination {
+    fn invoke_with_retries(
+        &self,
+        event_id: &EventId,
+        ctx: &ergo_adapter::ExecutionContext,
+    ) -> (RunTermination, usize) {
         let mut attempts = 0_usize;
-        let mut termination = self
-            .runtime
-            .run(&self.graph_id, ctx, self.constraints.deadline);
+        let mut termination =
+            self.runtime
+                .run(&self.graph_id, event_id, ctx, self.constraints.deadline);
 
         while attempts < self.constraints.max_retries && Self::should_retry(&termination) {
             attempts = attempts.saturating_add(1);
-            termination = self
-                .runtime
-                .run(&self.graph_id, ctx, self.constraints.deadline);
+            termination =
+                self.runtime
+                    .run(&self.graph_id, event_id, ctx, self.constraints.deadline);
         }
 
-        termination
+        (termination, attempts)
     }
 
     fn should_retry(termination: &RunTermination) -> bool {
@@ -200,19 +280,23 @@ impl<L: DecisionLog> Supervisor<L> {
 
     fn log_decision(
         &self,
-        event: ExternalEvent,
+        event: &ExternalEvent,
         decision: Decision,
-        scheduled_for: Option<Duration>,
+        schedule_at: Option<EventTime>,
         episode_id: EpisodeId,
         termination: RunTermination,
+        retry_count: usize,
     ) {
         let entry = DecisionLogEntry {
             graph_id: self.graph_id.clone(),
-            event,
+            event_id: event.event_id().clone(),
+            event: event.clone(),
             decision,
-            scheduled_for,
+            schedule_at,
             episode_id,
+            deadline: self.constraints.deadline,
             termination,
+            retry_count,
         };
         self.decision_log.log(entry);
     }
