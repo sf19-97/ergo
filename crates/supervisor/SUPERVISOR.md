@@ -145,6 +145,10 @@ The DecisionLog enables:
 
 If a decision is not logged, it did not happen.
 
+**Encoding convention:** For `Decision::Defer` and `Decision::Skip`, the `termination` field
+in `DecisionLogEntry` is not semantically meaningful — no episode was invoked. The `Decision`
+variant is authoritative; `termination` is only valid for `Decision::Invoke`.
+
 ---
 
 ## 3. Invariants
@@ -416,14 +420,9 @@ Anything not on this list is out of scope.
 
 ## 9. Freeze Status
 
-This document is a **freeze candidate**.
+This document is **FROZEN**.
 
-It is not yet frozen. It requires:
-
-1. Review by ChatGPT for internal consistency
-2. Approval by Sebastian for freeze
-
-Once frozen, changes require joint escalation per AGENT_CONTRACT.md v1.1.
+Changes require joint escalation per AGENT_CONTRACT.md v1.1.
 
 ---
 
@@ -431,8 +430,9 @@ Once frozen, changes require joint escalation per AGENT_CONTRACT.md v1.1.
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
-| v0.1 | 2025-12-XX | Claude (Structural Auditor) | Initial draft |
-| v0.2 | 2025-12-XX | Claude (Structural Auditor) | Added SUP-7 (DecisionLog write-only); ChatGPT polish edits |
+| v0.1 | 2025-12-27 | Claude (Structural Auditor) | Initial draft |
+| v0.2 | 2025-12-27 | Claude (Structural Auditor) | Added SUP-7 (DecisionLog write-only); ChatGPT polish edits |
+| v0.3 | 2025-12-27 | Claude Code | Freeze finalization; Sebastian approval |
 
 ---
 
@@ -455,4 +455,6 @@ Once frozen, changes require joint escalation per AGENT_CONTRACT.md v1.1.
 > Signed: ChatGPT (Integrator Support / Build Orchestrator)
 
 **Sebastian approval:**
-> (Pending)
+> SUPERVISOR.md v0 is frozen. Changes require joint agent escalation.
+>
+> Signed: Sebastian (Author / Architect) — approved via Claude Code proxy 
