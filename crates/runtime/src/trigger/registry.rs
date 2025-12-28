@@ -34,6 +34,14 @@ impl TriggerRegistry {
             return Err(TriggerValidationError::NonDeterministicExecution);
         }
 
+        // TRG-STATE-1: Triggers must be stateless.
+        // Temporal patterns requiring memory must be implemented as clusters.
+        if manifest.state.allowed {
+            return Err(TriggerValidationError::StatefulTriggerNotAllowed {
+                trigger_id: manifest.id.clone(),
+            });
+        }
+
         Self::validate_outputs(&manifest.outputs)?;
 
         Ok(())
@@ -83,5 +91,62 @@ impl TriggerRegistry {
 impl Default for TriggerRegistry {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::trigger::{Cadence, ExecutionSpec, InputSpec, StateSpec};
+
+    fn make_valid_manifest() -> TriggerPrimitiveManifest {
+        TriggerPrimitiveManifest {
+            id: "test_trigger".to_string(),
+            version: "0.1.0".to_string(),
+            kind: TriggerKind::Trigger,
+            inputs: vec![InputSpec {
+                name: "input".to_string(),
+                value_type: TriggerValueType::Bool,
+                required: true,
+                cardinality: super::super::Cardinality::Single,
+            }],
+            outputs: vec![OutputSpec {
+                name: "event".to_string(),
+                value_type: TriggerValueType::Event,
+            }],
+            parameters: vec![],
+            execution: ExecutionSpec {
+                deterministic: true,
+                cadence: Cadence::Continuous,
+            },
+            state: StateSpec {
+                allowed: false,
+                description: None,
+            },
+            side_effects: false,
+        }
+    }
+
+    #[test]
+    fn trg_state_1_stateful_trigger_rejected() {
+        let mut manifest = make_valid_manifest();
+        manifest.state.allowed = true;
+
+        let result = TriggerRegistry::validate_manifest(&manifest);
+
+        assert!(matches!(
+            result,
+            Err(TriggerValidationError::StatefulTriggerNotAllowed { trigger_id })
+            if trigger_id == "test_trigger"
+        ));
+    }
+
+    #[test]
+    fn stateless_trigger_accepted() {
+        let manifest = make_valid_manifest();
+
+        let result = TriggerRegistry::validate_manifest(&manifest);
+
+        assert!(result.is_ok());
     }
 }

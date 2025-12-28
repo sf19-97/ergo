@@ -205,6 +205,10 @@ pub enum TriggerValidationError {
         node: String,
         output: String,
     },
+    /// TRG-STATE-1: Triggers must be stateless.
+    StatefulTriggerNotAllowed {
+        trigger_id: String,
+    },
 }
 
 pub trait TriggerPrimitive {
