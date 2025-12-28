@@ -77,6 +77,7 @@ fn concurrency_cap_determinism() {
 
     assert_eq!(first, second);
     assert!(first.iter().all(|r| r.decision == Decision::Defer));
+    assert!(first.iter().all(|r| r.termination.is_none()));
 }
 
 #[test]
@@ -101,6 +102,7 @@ fn rate_limit_determinism() {
         first[2].schedule_at,
         Some(EventTime::from_duration(Duration::from_secs(10)))
     );
+    assert!(first[2].termination.is_none());
 }
 
 #[test]
@@ -120,7 +122,7 @@ fn retry_only_on_mechanical_failures() {
 
     let bundle = baseline_bundle(events, constraints);
     let records = extract(&bundle, runtime);
-    assert_eq!(records[0].termination, RunTermination::Completed);
+    assert_eq!(records[0].termination, Some(RunTermination::Completed));
     assert_eq!(records[0].retry_count, 1);
 }
 
@@ -134,7 +136,7 @@ fn deadline_path_determinism() {
     let bundle = baseline_bundle(events, constraints);
 
     let records = extract(&bundle, runtime);
-    assert_eq!(records[0].termination, RunTermination::Aborted);
+    assert_eq!(records[0].termination, Some(RunTermination::Aborted));
 }
 
 #[test]

@@ -67,7 +67,7 @@ pub struct DecisionLogEntry {
     pub schedule_at: Option<EventTime>,
     pub episode_id: EpisodeId,
     pub deadline: Option<Duration>,
-    pub termination: RunTermination,
+    pub termination: Option<RunTermination>,
     pub retry_count: usize,
 }
 
@@ -78,7 +78,8 @@ pub struct EpisodeInvocationRecord {
     pub schedule_at: Option<EventTime>,
     pub episode_id: EpisodeId,
     pub deadline: Option<Duration>,
-    pub termination: RunTermination,
+    #[serde(default)]
+    pub termination: Option<RunTermination>,
     pub retry_count: usize,
 }
 
@@ -166,27 +167,13 @@ impl<L: DecisionLog, R: RuntimeInvoker> Supervisor<L, R> {
         let episode_id = self.next_episode_id();
 
         if self.is_concurrency_saturated() {
-            self.log_decision(
-                &event,
-                Decision::Defer,
-                Some(now),
-                episode_id,
-                RunTermination::Aborted,
-                0,
-            );
+            self.log_decision(&event, Decision::Defer, Some(now), episode_id, None, 0);
             return;
         }
 
         if let Some(delay) = self.rate_limit_delay(now) {
             let schedule_at = Some(now.saturating_add(delay));
-            self.log_decision(
-                &event,
-                Decision::Defer,
-                schedule_at,
-                episode_id,
-                RunTermination::Aborted,
-                0,
-            );
+            self.log_decision(&event, Decision::Defer, schedule_at, episode_id, None, 0);
             return;
         }
 
@@ -205,7 +192,7 @@ impl<L: DecisionLog, R: RuntimeInvoker> Supervisor<L, R> {
             Decision::Invoke,
             None,
             episode_id,
-            termination,
+            Some(termination),
             retry_count,
         );
     }
@@ -284,7 +271,7 @@ impl<L: DecisionLog, R: RuntimeInvoker> Supervisor<L, R> {
         decision: Decision,
         schedule_at: Option<EventTime>,
         episode_id: EpisodeId,
-        termination: RunTermination,
+        termination: Option<RunTermination>,
         retry_count: usize,
     ) {
         let entry = DecisionLogEntry {
