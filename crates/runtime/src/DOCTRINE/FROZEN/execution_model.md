@@ -62,18 +62,69 @@ The specialness of events is in the type system and wiring rules, not the execut
 
 ## 5. Trigger Execution Semantics
 
-- Trigger nodes may hold internal state.
-- Trigger state is scoped to the executor lifecycle.
-- Trigger state resets only at orchestrator-defined lifecycle boundaries
-  (e.g., new backtest run, new live session, new graph instantiation).
+### 5.1 Triggers are Stateless
+
+Triggers are ontologically stateless. A Trigger is a primitive causal role whose sole
+responsibility is to gate whether an Action may attempt to affect the external world.
+It does not store information, accumulate history, or own temporal memory.
+
+Triggers:
+- Evaluate their inputs on each invocation
+- Emit `Emitted` or `NotEmitted` based solely on current input values
+- Have no memory of prior evaluations
+- Cannot observe, preserve, or depend on cross-evaluation information
+
+### 5.2 Execution-Local Bookkeeping
+
+Trigger evaluation may involve ephemeral, execution-local bookkeeping (temporary
+comparisons, registers, scratch data) that exists only during evaluation. Such
+bookkeeping:
+
+- Is not represented in the causal graph
+- Is not part of the runtime contract
+- Is not preserved across evaluations
+- Has no semantic identity
+- Is not observable, replayable, or serializable
+
+Execution-local bookkeeping does not constitute state. It exists only within a single
+evaluation pass and is discarded before the next causal boundary.
+
+### 5.3 Canonical Boundary Rule
+
+> **Execution may use memory. The system may never observe, preserve, or depend on
+> that memory.**
+
+Memory may not:
+- Participate in causality
+- Survive evaluation
+- Be wired, surfaced, or reasoned about
+
+Only declared causality remains.
+
+### 5.4 Temporal Patterns are Compositions
+
+All apparent "stateful trigger" behavior (edge detection, hysteresis, debouncing,
+counting, latching) must be expressed using explicit composition:
+
+- Compute nodes for transformation
+- Sources for reading persisted state from environment
+- Actions for writing state to environment
+- Clusters to encapsulate these patterns
+
+The Trigger primitive itself remains stateless and level-sensitive.
+
+### 5.5 Amendment Record
+
+> **Amended 2025-12-28** by Sebastian (Freeze Authority)
+>
+> Prior language stating "Trigger nodes may hold internal state" was a semantic error
+> that conflated execution-local bookkeeping with ontological state. This amendment
+> corrects the error. Triggers are, and always were intended to be, stateless primitives.
+>
+> See: REP-6 closure in PHASE_INVARIANTS.md
 
 Trigger chaining (Trigger → Trigger) is allowed.
 Trigger cycles are forbidden.
-
-Triggers operate purely on inputs available within the evaluation pass and stored internal state.
-
-Trigger state must be replay-reconstructible from inputs and lifecycle resets.
-Live introspection of trigger state is out of scope for v0.
 
 ---
 

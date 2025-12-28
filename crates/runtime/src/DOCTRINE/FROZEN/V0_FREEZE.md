@@ -84,12 +84,48 @@ Graphs violating these rules are invalid.
 
 📍 Defined in: `execution_model.md`
 
-### 2.6 Trigger State
+### 2.6 Trigger Statelessness
 
-- Triggers may hold internal state.
-- Trigger state is deterministic and replayable.
-- Trigger state resets only at orchestrator-defined lifecycle boundaries
-  (e.g., new backtest run, new live session, new graph instantiation).
+Triggers are ontologically stateless.
+
+A Trigger:
+- Gates whether an Action may attempt to affect the external world
+- Evaluates inputs and emits `Emitted` or `NotEmitted`
+- Has no memory of prior evaluations
+- Does not store information, accumulate history, or own temporal memory
+
+#### Execution-Local Bookkeeping
+
+Trigger implementations may use ephemeral, execution-local bookkeeping during
+evaluation. This bookkeeping:
+
+- Is not state
+- Is not observable or serializable
+- Is not preserved across evaluations
+- Does not participate in causality
+
+#### Temporal Patterns
+
+Behaviors requiring memory (once, count, latch, debounce, edge detection) are
+**not triggers**. They are compositional patterns expressed as clusters using:
+
+- Source (read persisted state)
+- Compute (evaluate policy)
+- Trigger (emit event based on computed boolean)
+- Action (write updated state)
+
+#### Boundary Rule
+
+> Execution may use memory. The system may never observe, preserve, or depend on
+> that memory.
+
+#### Amendment Record
+
+> **Amended 2025-12-28** by Sebastian (Freeze Authority)
+>
+> Prior language stating "Triggers may hold internal state" was a semantic error.
+> This amendment corrects the error to align with the system's actual invariant
+> structure. Triggers are stateless primitives. REP-6 is closed by clarification.
 
 📍 Defined in: `execution_model.md`
 
