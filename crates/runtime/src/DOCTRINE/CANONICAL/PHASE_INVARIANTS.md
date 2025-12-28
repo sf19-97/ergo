@@ -257,7 +257,7 @@ These invariants hold across all phases. Violation at any point is a system-leve
 | R.2 | Nodes execute in topological order | execution_model.md §3 | — | — | — | ✓ |
 | R.3 | No node observes effects from actions in same pass | execution_model.md §1 | — | — | ✓ | ✓ |
 | R.4 | Action failure aborts subsequent actions in same pass | execution_model.md §7 | — | — | — | ✓ |
-| R.5 | Trigger state resets only at lifecycle boundaries | execution_model.md §5 | — | — | — | — |
+| R.5 | Triggers are stateless (TRG-STATE-1) | execution_model.md §5 | — | — | ✓ | ✓ |
 | R.6 | Outputs are deterministic given inputs + state | execution_model.md §8 | — | — | — | ✓ |
 | R.7 | Actions execute only when trigger event emitted | execution_model.md §7 | — | — | — | ✓ |
 
@@ -269,7 +269,30 @@ These invariants hold across all phases. Violation at any point is a system-leve
   - Since no edge can originate from an Action, no node can observe action effects.
   - No separate test needed — enforcement is structural via wiring matrix validation.
 - **R.4:** ✅ **CLOSED (by design).** `Result::Err` propagation via `?` is sufficient. `ActionOutcome::Failed` is data, not control flow — structural halt must be expressed via Trigger gating/wiring, not implicit runtime payload semantics.
-- **R.5:** Lifecycle boundaries are orchestrator-defined. Enforcement is outside current scope.
+- **R.5 / TRG-STATE-1:** ✅ **CLOSED.** Triggers are ontologically stateless.
+
+### TRG-STATE-1: Triggers are stateless
+
+| Aspect | Specification |
+|--------|---------------|
+| **Invariant** | Trigger implementations must not use observable, preservable, or causally meaningful state |
+| **Enforcement** | Manifest: `state: StateSpec { allowed: false }` required for all triggers |
+| **Locus** | Registry validation at registration time; manifest schema |
+| **Violation** | Trigger with `allowed: true` rejected by registry |
+
+**Rationale:** Triggers are ontologically stateless. A Trigger gates whether an Action
+may attempt to affect the external world. It does not store information, accumulate
+history, or own temporal memory. Execution-local bookkeeping (ephemeral scratch data
+during evaluation) is permitted but does not constitute state — it is not observable,
+serializable, or preserved across evaluations.
+
+**Canonical Boundary Rule:** Execution may use memory. The system may never observe,
+preserve, or depend on that memory.
+
+**Temporal patterns** (once, count, latch, debounce) requiring cross-evaluation memory
+must be implemented as clusters with explicit state flow through environment.
+
+**Authority:** Sebastian (Freeze Authority), 2025-12-28
 - **R.7:** ✅ **CLOSED.** Runtime now gates Action execution on `TriggerEvent::Emitted`. Implementation:
   - `should_skip_action()` in execute.rs checks for any `TriggerEvent::NotEmitted` input (AND semantics)
   - Skipped actions return `ActionOutcome::Skipped` for Event outputs
@@ -330,7 +353,7 @@ These invariants hold across all phases. Violation at any point is a system-leve
 | REP-3 | Fault injection keys on EventId only | — | ✓ | — | — | ✓ |
 | REP-4 | Capture/runtime type separation | — | ✓ | — | — | — |
 | REP-5 | No wall-clock time in supervisor | — | — | — | — | ✓ |
-| REP-6 | Stateful trigger state captured for replay | — | — | — | — | — |
+| REP-6 | Stateful trigger state captured for replay | N/A | N/A | N/A | N/A | ✅ CLOSED BY CLARIFICATION |
 
 ### Notes
 
@@ -339,7 +362,19 @@ These invariants hold across all phases. Violation at any point is a system-leve
 - **REP-3:** `FaultRuntimeHandle` explicitly discards `graph_id` and `ctx.inner()`; keys on `EventId` only.
 - **REP-4:** `ExecutionContext` has no serde derives. Capture types (`ExternalEventRecord`, `EpisodeInvocationRecord`) are separate from runtime types (`ExternalEvent`, `DecisionLogEntry`).
 - **REP-5:** Test at `replay_harness.rs:150-157` enforces no `SystemTime` usage in supervisor.
-- **REP-6:** ⚠️ **GAP (latent).** Stateful triggers (`once`, `latch`, `count`, `debounce`) maintain state within episodes. Current `rehydrate()` creates fresh `HashMap::new()` trigger state. When Supervisor → Runtime integration is complete, replay will diverge from original execution if triggers were stateful. Fix required: capture trigger state snapshots. Status: Deferred until integration.
+- **REP-6:** ✅ **CLOSED BY CLARIFICATION (2025-12-28)**
+
+**Resolution:** Prior documentation suggesting "triggers may hold internal state" was a
+semantic error that conflated execution-local bookkeeping with ontological state.
+
+Triggers are stateless (see TRG-STATE-1). There is no trigger state to capture. Temporal
+patterns requiring memory (once, count, latch, debounce) must be implemented as clusters
+with explicit state flow through environment (Source reads state, Action writes state).
+
+Replay determinism is preserved by existing adapter capture (REP-1 through REP-5). No
+additional capture mechanism is required.
+
+**Authority:** Sebastian (Freeze Authority), 2025-12-28
 
 ---
 
@@ -384,7 +419,7 @@ No implementation required. State is already fully externalized and governed by 
 | ~~X.7~~ | ~~Compute inputs ≥1~~ | ~~Validation missing~~ | ~~HIGH~~ | ✅ CLOSED |
 | ~~R.4~~ | ~~Action failure aborts subsequent actions~~ | ~~Closed by design — Result::Err propagation~~ | ~~LOW~~ | ✅ CLOSED |
 | ~~R.7~~ | ~~Actions execute only when trigger emitted~~ | ~~Runtime gating missing~~ | ~~BLOCKER~~ | ✅ CLOSED |
-| REP-6 | Stateful trigger state captured | Replay will diverge on stateful triggers | MEDIUM | ⚠️ DEFERRED |
+| ~~REP-6~~ | ~~Stateful trigger state captured~~ | ~~Closed — triggers are stateless by design~~ | ~~N/A~~ | ✅ CLOSED |
 
 ---
 
@@ -436,3 +471,4 @@ Changes to this document require the same review bar as changes to frozen specs.
 | v0.10 | 2025-12-27 | Claude Prime | Supervisor + Replay freeze declaration (Stage C complete); Stage D verification declared |
 | v0.11 | 2025-12-28 | Claude Prime | R.7 violation detected (Action gating); REP-6 gap added (stateful trigger capture); V.5 note updated |
 | v0.12 | 2025-12-28 | Claude Code | R.7 closed — runtime gating implemented; ActionOutcome::Skipped added; test added |
+| v0.13 | 2025-12-28 | Claude Code | TRG-STATE-1 added — triggers are stateless; R.5 updated; REP-6 closed by clarification |
