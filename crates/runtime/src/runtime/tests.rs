@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::action;
 use crate::catalog::{build_core_catalog, core_registries};
 use crate::cluster::{
     ExpandedEndpoint, ExpandedGraph, ExpandedNode, InputMetadata, OutputMetadata, PrimitiveCatalog,
@@ -7,11 +8,10 @@ use crate::cluster::{
 };
 use crate::compute::implementations::{Add, ConstNumber};
 use crate::compute::PrimitiveRegistry as ComputeRegistry;
-use crate::runtime::types::{ExecutionContext, Registries, RuntimeValue};
 use crate::runtime::run;
+use crate::runtime::types::{ExecutionContext, Registries, RuntimeValue};
 use crate::source::{SourceKind, SourcePrimitive, SourcePrimitiveManifest, SourceRegistry};
 use crate::trigger::TriggerRegistry;
-use crate::action;
 
 #[derive(Default)]
 struct TestCatalog {
@@ -20,7 +20,9 @@ struct TestCatalog {
 
 impl PrimitiveCatalog for TestCatalog {
     fn get(&self, id: &str, version: &String) -> Option<PrimitiveMetadata> {
-        self.metadata.get(&(id.to_string(), version.clone())).cloned()
+        self.metadata
+            .get(&(id.to_string(), version.clone()))
+            .cloned()
     }
 }
 
@@ -275,7 +277,9 @@ fn parameters_flow_into_compute_execution() {
     );
 
     let mut compute_registry = ComputeRegistry::new();
-    compute_registry.register(Box::new(ConstNumber::new())).unwrap();
+    compute_registry
+        .register(Box::new(ConstNumber::new()))
+        .unwrap();
 
     let registries = Registries {
         sources: &SourceRegistry::new(),
@@ -437,9 +441,9 @@ fn hello_world_graph_executes_with_core_catalog_and_registries() {
     let report = run(&expanded, &catalog, &registries, &ctx).unwrap();
     assert_eq!(
         report.outputs.get("action_outcome"),
-        Some(&RuntimeValue::Event(crate::runtime::types::RuntimeEvent::Action(
-            crate::action::ActionOutcome::Filled
-        )))
+        Some(&RuntimeValue::Event(
+            crate::runtime::types::RuntimeEvent::Action(crate::action::ActionOutcome::Filled)
+        ))
     );
 }
 

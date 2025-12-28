@@ -13,7 +13,9 @@ impl SourceRegistry {
         }
     }
 
-    pub fn validate_manifest(manifest: &SourcePrimitiveManifest) -> Result<(), SourceValidationError> {
+    pub fn validate_manifest(
+        manifest: &SourcePrimitiveManifest,
+    ) -> Result<(), SourceValidationError> {
         if manifest.kind != SourceKind::Source {
             return Err(SourceValidationError::WrongKind {
                 expected: SourceKind::Source,
@@ -48,7 +50,10 @@ impl SourceRegistry {
         Ok(())
     }
 
-    pub fn register(&mut self, primitive: Box<dyn SourcePrimitive>) -> Result<(), SourceValidationError> {
+    pub fn register(
+        &mut self,
+        primitive: Box<dyn SourcePrimitive>,
+    ) -> Result<(), SourceValidationError> {
         let manifest = primitive.manifest();
 
         Self::validate_manifest(manifest)?;

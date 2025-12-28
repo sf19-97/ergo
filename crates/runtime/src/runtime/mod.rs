@@ -1,10 +1,10 @@
+pub mod execute;
 pub mod types;
 pub mod validate;
-pub mod execute;
 
+pub use execute::execute;
 pub use types::*;
 pub use validate::validate;
-pub use execute::execute;
 
 #[cfg(test)]
 mod tests;

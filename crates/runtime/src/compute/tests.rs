@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use crate::common::Value;
-use crate::compute::ComputePrimitive;
 use crate::compute::implementations::{
     Add, And, ConstBool, ConstNumber, Divide, Eq, Gt, Lt, Multiply, Negate, Neq, Not, Or, Select,
     Subtract,
 };
+use crate::compute::ComputePrimitive;
 
 fn expect_panic<F: FnOnce() -> R + std::panic::UnwindSafe, R>(f: F) {
     assert!(std::panic::catch_unwind(f).is_err());

@@ -33,7 +33,10 @@ impl PrimitiveRegistry {
         Ok(())
     }
 
-    pub fn register(&mut self, primitive: Box<dyn ComputePrimitive>) -> Result<(), ValidationError> {
+    pub fn register(
+        &mut self,
+        primitive: Box<dyn ComputePrimitive>,
+    ) -> Result<(), ValidationError> {
         let manifest = primitive.manifest();
 
         Self::validate_manifest(manifest)?;

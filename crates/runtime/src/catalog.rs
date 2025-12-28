@@ -2,20 +2,21 @@ use std::collections::HashMap;
 
 use crate::action::{
     implementations::{ack_action_manifest, annotate_action_manifest},
-    AckAction, AnnotateAction, ActionRegistry, ActionValidationError, ActionValueType,
+    AckAction, ActionRegistry, ActionValidationError, ActionValueType, AnnotateAction,
 };
 use crate::cluster::{
-    Cardinality, InputMetadata, OutputMetadata, PrimitiveCatalog, PrimitiveKind, PrimitiveMetadata, ValueType,
-    Version,
+    Cardinality, InputMetadata, OutputMetadata, PrimitiveCatalog, PrimitiveKind, PrimitiveMetadata,
+    ValueType, Version,
 };
 use crate::common;
 use crate::common::ValidationError;
 use crate::compute::implementations::{
-    add::add_manifest, and::and_manifest, const_bool::const_bool_manifest, const_number::const_number_manifest,
-    divide::divide_manifest, eq::eq_manifest, gt::gt_manifest, lt::lt_manifest, multiply::multiply_manifest,
-    negate::negate_manifest, neq::neq_manifest, not::not_manifest, or::or_manifest, select::select_manifest,
-    subtract::subtract_manifest, Add, And, ConstBool, ConstNumber, Divide, Eq, Gt, Lt, Multiply, Negate, Neq, Not,
-    Or, Select, Subtract,
+    add::add_manifest, and::and_manifest, const_bool::const_bool_manifest,
+    const_number::const_number_manifest, divide::divide_manifest, eq::eq_manifest, gt::gt_manifest,
+    lt::lt_manifest, multiply::multiply_manifest, negate::negate_manifest, neq::neq_manifest,
+    not::not_manifest, or::or_manifest, select::select_manifest, subtract::subtract_manifest, Add,
+    And, ConstBool, ConstNumber, Divide, Eq, Gt, Lt, Multiply, Negate, Neq, Not, Or, Select,
+    Subtract,
 };
 use crate::compute::{ComputePrimitiveManifest, PrimitiveRegistry as ComputeRegistry};
 use crate::source::{
@@ -23,8 +24,8 @@ use crate::source::{
     BooleanSource, NumberSource, SourceRegistry, SourceValidationError,
 };
 use crate::trigger::{
-    implementations::emit_if_true::emit_if_true_manifest, EmitIfTrue, TriggerRegistry, TriggerValidationError,
-    TriggerValueType,
+    implementations::emit_if_true::emit_if_true_manifest, EmitIfTrue, TriggerRegistry,
+    TriggerValidationError, TriggerValueType,
 };
 
 #[derive(Debug)]
@@ -49,38 +50,83 @@ impl CoreRegistries {
         triggers: TriggerRegistry,
         actions: ActionRegistry,
     ) -> Self {
-        Self { sources, computes, triggers, actions }
+        Self {
+            sources,
+            computes,
+            triggers,
+            actions,
+        }
     }
 }
 
 pub fn core_registries() -> Result<CoreRegistries, CoreRegistrationError> {
     let mut sources = SourceRegistry::new();
-    sources.register(Box::new(NumberSource::new())).map_err(CoreRegistrationError::Source)?;
-    sources.register(Box::new(BooleanSource::new())).map_err(CoreRegistrationError::Source)?;
+    sources
+        .register(Box::new(NumberSource::new()))
+        .map_err(CoreRegistrationError::Source)?;
+    sources
+        .register(Box::new(BooleanSource::new()))
+        .map_err(CoreRegistrationError::Source)?;
 
     let mut computes = ComputeRegistry::new();
-    computes.register(Box::new(ConstNumber::new())).map_err(CoreRegistrationError::Compute)?;
-    computes.register(Box::new(ConstBool::new())).map_err(CoreRegistrationError::Compute)?;
-    computes.register(Box::new(Add::new())).map_err(CoreRegistrationError::Compute)?;
-    computes.register(Box::new(Subtract::new())).map_err(CoreRegistrationError::Compute)?;
-    computes.register(Box::new(Multiply::new())).map_err(CoreRegistrationError::Compute)?;
-    computes.register(Box::new(Divide::new())).map_err(CoreRegistrationError::Compute)?;
-    computes.register(Box::new(Negate::new())).map_err(CoreRegistrationError::Compute)?;
-    computes.register(Box::new(Gt::new())).map_err(CoreRegistrationError::Compute)?;
-    computes.register(Box::new(Lt::new())).map_err(CoreRegistrationError::Compute)?;
-    computes.register(Box::new(Eq::new())).map_err(CoreRegistrationError::Compute)?;
-    computes.register(Box::new(Neq::new())).map_err(CoreRegistrationError::Compute)?;
-    computes.register(Box::new(And::new())).map_err(CoreRegistrationError::Compute)?;
-    computes.register(Box::new(Or::new())).map_err(CoreRegistrationError::Compute)?;
-    computes.register(Box::new(Not::new())).map_err(CoreRegistrationError::Compute)?;
-    computes.register(Box::new(Select::new())).map_err(CoreRegistrationError::Compute)?;
+    computes
+        .register(Box::new(ConstNumber::new()))
+        .map_err(CoreRegistrationError::Compute)?;
+    computes
+        .register(Box::new(ConstBool::new()))
+        .map_err(CoreRegistrationError::Compute)?;
+    computes
+        .register(Box::new(Add::new()))
+        .map_err(CoreRegistrationError::Compute)?;
+    computes
+        .register(Box::new(Subtract::new()))
+        .map_err(CoreRegistrationError::Compute)?;
+    computes
+        .register(Box::new(Multiply::new()))
+        .map_err(CoreRegistrationError::Compute)?;
+    computes
+        .register(Box::new(Divide::new()))
+        .map_err(CoreRegistrationError::Compute)?;
+    computes
+        .register(Box::new(Negate::new()))
+        .map_err(CoreRegistrationError::Compute)?;
+    computes
+        .register(Box::new(Gt::new()))
+        .map_err(CoreRegistrationError::Compute)?;
+    computes
+        .register(Box::new(Lt::new()))
+        .map_err(CoreRegistrationError::Compute)?;
+    computes
+        .register(Box::new(Eq::new()))
+        .map_err(CoreRegistrationError::Compute)?;
+    computes
+        .register(Box::new(Neq::new()))
+        .map_err(CoreRegistrationError::Compute)?;
+    computes
+        .register(Box::new(And::new()))
+        .map_err(CoreRegistrationError::Compute)?;
+    computes
+        .register(Box::new(Or::new()))
+        .map_err(CoreRegistrationError::Compute)?;
+    computes
+        .register(Box::new(Not::new()))
+        .map_err(CoreRegistrationError::Compute)?;
+    computes
+        .register(Box::new(Select::new()))
+        .map_err(CoreRegistrationError::Compute)?;
 
     let mut triggers = TriggerRegistry::new();
-    triggers.register(Box::new(EmitIfTrue::new())).map_err(CoreRegistrationError::Trigger)?;
+    triggers
+        .register(Box::new(EmitIfTrue::new()))
+        .map_err(CoreRegistrationError::Trigger)?;
 
     let mut actions = ActionRegistry::new();
-    actions.register(Box::new(AckAction::new())).map_err(CoreRegistrationError::Action)?;
-    actions.register(Box::new(AnnotateAction::new())).map_err(CoreRegistrationError::Action)?;
+    actions
+        .register(Box::new(AckAction::new()))
+        .map_err(CoreRegistrationError::Action)?;
+    actions
+        .register(Box::new(AnnotateAction::new()))
+        .map_err(CoreRegistrationError::Action)?;
 
     Ok(CoreRegistries::new(sources, computes, triggers, actions))
 }
@@ -230,7 +276,9 @@ impl CorePrimitiveCatalog {
 
 impl PrimitiveCatalog for CorePrimitiveCatalog {
     fn get(&self, id: &str, version: &Version) -> Option<PrimitiveMetadata> {
-        self.metadata.get(&(id.to_string(), version.clone())).cloned()
+        self.metadata
+            .get(&(id.to_string(), version.clone()))
+            .cloned()
     }
 }
 

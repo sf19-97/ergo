@@ -16,7 +16,9 @@ impl TriggerRegistry {
         }
     }
 
-    pub fn validate_manifest(manifest: &TriggerPrimitiveManifest) -> Result<(), TriggerValidationError> {
+    pub fn validate_manifest(
+        manifest: &TriggerPrimitiveManifest,
+    ) -> Result<(), TriggerValidationError> {
         if manifest.kind != TriggerKind::Trigger {
             return Err(TriggerValidationError::WrongKind {
                 expected: TriggerKind::Trigger,
@@ -57,7 +59,10 @@ impl TriggerRegistry {
         Ok(())
     }
 
-    pub fn register(&mut self, primitive: Box<dyn TriggerPrimitive>) -> Result<(), TriggerValidationError> {
+    pub fn register(
+        &mut self,
+        primitive: Box<dyn TriggerPrimitive>,
+    ) -> Result<(), TriggerValidationError> {
         let manifest = primitive.manifest();
 
         Self::validate_manifest(manifest)?;

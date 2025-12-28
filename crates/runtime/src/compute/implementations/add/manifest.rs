@@ -1,5 +1,7 @@
 use crate::common::{PrimitiveKind, ValueType};
-use crate::compute::{Cadence, ComputePrimitiveManifest, ExecutionSpec, InputSpec, OutputSpec, StateSpec};
+use crate::compute::{
+    Cadence, ComputePrimitiveManifest, ExecutionSpec, InputSpec, OutputSpec, StateSpec,
+};
 
 pub fn add_manifest() -> ComputePrimitiveManifest {
     ComputePrimitiveManifest {

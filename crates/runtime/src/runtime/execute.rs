@@ -25,7 +25,9 @@ pub fn execute(
         let outputs = match node.kind {
             PrimitiveKind::Source => execute_source(node, inputs, registries)?,
             PrimitiveKind::Compute => execute_compute(node, inputs, registries)?,
-            PrimitiveKind::Trigger => execute_trigger(node, inputs, registries, &mut trigger_state)?,
+            PrimitiveKind::Trigger => {
+                execute_trigger(node, inputs, registries, &mut trigger_state)?
+            }
             PrimitiveKind::Action => execute_action(node, inputs, registries)?,
         };
 
@@ -63,19 +65,27 @@ fn collect_inputs(
     let mut inputs: HashMap<String, RuntimeValue> = HashMap::new();
 
     for edge in edges {
-        let Endpoint::NodePort { node_id: to_node, port_name: to_port } = &edge.to;
+        let Endpoint::NodePort {
+            node_id: to_node,
+            port_name: to_port,
+        } = &edge.to;
         if to_node == target {
-            let Endpoint::NodePort { node_id: from, port_name: from_port } = &edge.from;
+            let Endpoint::NodePort {
+                node_id: from,
+                port_name: from_port,
+            } = &edge.from;
             let outs = node_outputs
                 .get(from)
                 .ok_or_else(|| ExecError::MissingOutput {
                     node: from.clone(),
                     output: from_port.clone(),
                 })?;
-            let val = outs.get(from_port).ok_or_else(|| ExecError::MissingOutput {
-                node: from.clone(),
-                output: from_port.clone(),
-            })?;
+            let val = outs
+                .get(from_port)
+                .ok_or_else(|| ExecError::MissingOutput {
+                    node: from.clone(),
+                    output: from_port.clone(),
+                })?;
             inputs.insert(to_port.clone(), val.clone());
         }
     }
@@ -98,13 +108,14 @@ fn execute_source(
     _inputs: HashMap<String, RuntimeValue>,
     registries: &Registries,
 ) -> Result<HashMap<String, RuntimeValue>, ExecError> {
-    let primitive = registries
-        .sources
-        .get(&node.impl_id)
-        .ok_or_else(|| ExecError::UnknownPrimitive {
-            id: node.impl_id.clone(),
-            version: node.version.clone(),
-        })?;
+    let primitive =
+        registries
+            .sources
+            .get(&node.impl_id)
+            .ok_or_else(|| ExecError::UnknownPrimitive {
+                id: node.impl_id.clone(),
+                version: node.version.clone(),
+            })?;
 
     let mut mapped_parameters: HashMap<String, crate::source::ParameterValue> = HashMap::new();
     for (name, val) in &node.parameters {
@@ -129,13 +140,14 @@ fn execute_compute(
     inputs: HashMap<String, RuntimeValue>,
     registries: &Registries,
 ) -> Result<HashMap<String, RuntimeValue>, ExecError> {
-    let primitive = registries
-        .computes
-        .get(&node.impl_id)
-        .ok_or_else(|| ExecError::UnknownPrimitive {
-            id: node.impl_id.clone(),
-            version: node.version.clone(),
-        })?;
+    let primitive =
+        registries
+            .computes
+            .get(&node.impl_id)
+            .ok_or_else(|| ExecError::UnknownPrimitive {
+                id: node.impl_id.clone(),
+                version: node.version.clone(),
+            })?;
 
     let mut mapped_inputs: HashMap<String, crate::common::Value> = HashMap::new();
     for (name, val) in inputs {
@@ -158,7 +170,10 @@ fn execute_compute(
     }
 
     let outputs = primitive.compute(&mapped_inputs, &mapped_parameters, None);
-    Ok(outputs.into_iter().map(|(k, v)| (k, map_common_value(v))).collect())
+    Ok(outputs
+        .into_iter()
+        .map(|(k, v)| (k, map_common_value(v)))
+        .collect())
 }
 
 fn execute_trigger(
@@ -167,13 +182,14 @@ fn execute_trigger(
     registries: &Registries,
     state: &mut HashMap<String, TriggerState>,
 ) -> Result<HashMap<String, RuntimeValue>, ExecError> {
-    let primitive = registries
-        .triggers
-        .get(&node.impl_id)
-        .ok_or_else(|| ExecError::UnknownPrimitive {
-            id: node.impl_id.clone(),
-            version: node.version.clone(),
-        })?;
+    let primitive =
+        registries
+            .triggers
+            .get(&node.impl_id)
+            .ok_or_else(|| ExecError::UnknownPrimitive {
+                id: node.impl_id.clone(),
+                version: node.version.clone(),
+            })?;
 
     let mut mapped_inputs: HashMap<String, TriggerValue> = HashMap::new();
     for (name, val) in inputs {
@@ -197,7 +213,10 @@ fn execute_trigger(
 
     let node_state = state.entry(node.runtime_id.clone()).or_default();
     let outputs = primitive.evaluate(&mapped_inputs, &mapped_parameters, Some(node_state));
-    Ok(outputs.into_iter().map(|(k, v)| (k, map_trigger_value(v))).collect())
+    Ok(outputs
+        .into_iter()
+        .map(|(k, v)| (k, map_trigger_value(v)))
+        .collect())
 }
 
 fn execute_action(
@@ -205,13 +224,14 @@ fn execute_action(
     inputs: HashMap<String, RuntimeValue>,
     registries: &Registries,
 ) -> Result<HashMap<String, RuntimeValue>, ExecError> {
-    let primitive = registries
-        .actions
-        .get(&node.impl_id)
-        .ok_or_else(|| ExecError::UnknownPrimitive {
-            id: node.impl_id.clone(),
-            version: node.version.clone(),
-        })?;
+    let primitive =
+        registries
+            .actions
+            .get(&node.impl_id)
+            .ok_or_else(|| ExecError::UnknownPrimitive {
+                id: node.impl_id.clone(),
+                version: node.version.clone(),
+            })?;
 
     let mut mapped_inputs: HashMap<String, ActionValue> = HashMap::new();
     for (name, val) in inputs {
@@ -231,7 +251,10 @@ fn execute_action(
     }
 
     let outputs = primitive.execute(&mapped_inputs, &mapped_parameters);
-    Ok(outputs.into_iter().map(|(k, v)| (k, map_action_value(v))).collect())
+    Ok(outputs
+        .into_iter()
+        .map(|(k, v)| (k, map_action_value(v)))
+        .collect())
 }
 
 fn map_common_value(v: crate::common::Value) -> RuntimeValue {
@@ -286,12 +309,16 @@ fn map_to_trigger_parameter_value(
 ) -> Option<crate::trigger::ParameterValue> {
     match v {
         crate::cluster::ParameterValue::Int(i) => Some(crate::trigger::ParameterValue::Int(*i)),
-        crate::cluster::ParameterValue::Number(n) => Some(crate::trigger::ParameterValue::Number(*n)),
+        crate::cluster::ParameterValue::Number(n) => {
+            Some(crate::trigger::ParameterValue::Number(*n))
+        }
         crate::cluster::ParameterValue::Bool(b) => Some(crate::trigger::ParameterValue::Bool(*b)),
         crate::cluster::ParameterValue::String(s) => {
             Some(crate::trigger::ParameterValue::String(s.clone()))
         }
-        crate::cluster::ParameterValue::Enum(e) => Some(crate::trigger::ParameterValue::Enum(e.clone())),
+        crate::cluster::ParameterValue::Enum(e) => {
+            Some(crate::trigger::ParameterValue::Enum(e.clone()))
+        }
     }
 }
 
@@ -304,11 +331,7 @@ fn map_action_value(v: ActionValue) -> RuntimeValue {
     }
 }
 
-fn map_to_action_value(
-    v: &RuntimeValue,
-    node: &str,
-    port: &str,
-) -> Result<ActionValue, ExecError> {
+fn map_to_action_value(v: &RuntimeValue, node: &str, port: &str) -> Result<ActionValue, ExecError> {
     match v {
         RuntimeValue::Event(RuntimeEvent::Action(e)) => Ok(ActionValue::Event(e.clone())),
         RuntimeValue::Event(RuntimeEvent::Trigger(_)) => {
@@ -329,10 +352,16 @@ fn map_to_action_parameter_value(
 ) -> Option<crate::action::ParameterValue> {
     match v {
         crate::cluster::ParameterValue::Int(i) => Some(crate::action::ParameterValue::Int(*i)),
-        crate::cluster::ParameterValue::Number(n) => Some(crate::action::ParameterValue::Number(*n)),
+        crate::cluster::ParameterValue::Number(n) => {
+            Some(crate::action::ParameterValue::Number(*n))
+        }
         crate::cluster::ParameterValue::Bool(b) => Some(crate::action::ParameterValue::Bool(*b)),
-        crate::cluster::ParameterValue::String(s) => Some(crate::action::ParameterValue::String(s.clone())),
-        crate::cluster::ParameterValue::Enum(e) => Some(crate::action::ParameterValue::Enum(e.clone())),
+        crate::cluster::ParameterValue::String(s) => {
+            Some(crate::action::ParameterValue::String(s.clone()))
+        }
+        crate::cluster::ParameterValue::Enum(e) => {
+            Some(crate::action::ParameterValue::Enum(e.clone()))
+        }
     }
 }
 
@@ -341,9 +370,15 @@ fn map_to_source_parameter_value(
 ) -> Option<crate::source::ParameterValue> {
     match v {
         crate::cluster::ParameterValue::Int(i) => Some(crate::source::ParameterValue::Int(*i)),
-        crate::cluster::ParameterValue::Number(n) => Some(crate::source::ParameterValue::Number(*n)),
+        crate::cluster::ParameterValue::Number(n) => {
+            Some(crate::source::ParameterValue::Number(*n))
+        }
         crate::cluster::ParameterValue::Bool(b) => Some(crate::source::ParameterValue::Bool(*b)),
-        crate::cluster::ParameterValue::String(s) => Some(crate::source::ParameterValue::String(s.clone())),
-        crate::cluster::ParameterValue::Enum(e) => Some(crate::source::ParameterValue::Enum(e.clone())),
+        crate::cluster::ParameterValue::String(s) => {
+            Some(crate::source::ParameterValue::String(s.clone()))
+        }
+        crate::cluster::ParameterValue::Enum(e) => {
+            Some(crate::source::ParameterValue::Enum(e.clone()))
+        }
     }
 }

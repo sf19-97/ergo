@@ -16,7 +16,9 @@ impl ActionRegistry {
         }
     }
 
-    pub fn validate_manifest(manifest: &ActionPrimitiveManifest) -> Result<(), ActionValidationError> {
+    pub fn validate_manifest(
+        manifest: &ActionPrimitiveManifest,
+    ) -> Result<(), ActionValidationError> {
         if manifest.kind != ActionKind::Action {
             return Err(ActionValidationError::WrongKind {
                 expected: ActionKind::Action,
@@ -73,7 +75,10 @@ impl ActionRegistry {
         Ok(())
     }
 
-    pub fn register(&mut self, primitive: Box<dyn ActionPrimitive>) -> Result<(), ActionValidationError> {
+    pub fn register(
+        &mut self,
+        primitive: Box<dyn ActionPrimitive>,
+    ) -> Result<(), ActionValidationError> {
         let manifest = primitive.manifest();
 
         Self::validate_manifest(manifest)?;

@@ -93,21 +93,44 @@ pub struct SourcePrimitiveManifest {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SourceValidationError {
-    WrongKind { expected: SourceKind, got: SourceKind },
+    WrongKind {
+        expected: SourceKind,
+        got: SourceKind,
+    },
     InputsNotAllowed,
     SideEffectsNotAllowed,
     NonDeterministicExecution,
     InvalidCadence,
     StateNotAllowed,
     DuplicateId(String),
-    InvalidParameterType { parameter: String, expected: ParameterType, got: ParameterType },
-    UndeclaredParameter { node: String, parameter: String },
-    UndeclaredOutput { primitive: String, output: String },
-    MissingDeclaredOutput { primitive: String, output: String },
-    InvalidOutputType { output: String, expected: ValueType, got: ValueType },
+    InvalidParameterType {
+        parameter: String,
+        expected: ParameterType,
+        got: ParameterType,
+    },
+    UndeclaredParameter {
+        node: String,
+        parameter: String,
+    },
+    UndeclaredOutput {
+        primitive: String,
+        output: String,
+    },
+    MissingDeclaredOutput {
+        primitive: String,
+        output: String,
+    },
+    InvalidOutputType {
+        output: String,
+        expected: ValueType,
+        got: ValueType,
+    },
     UnknownPrimitive(String),
     MissingNode(String),
-    MissingOutput { node: String, output: String },
+    MissingOutput {
+        node: String,
+        output: String,
+    },
     OutputsRequired,
 }
 

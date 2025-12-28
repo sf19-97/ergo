@@ -140,26 +140,59 @@ pub struct ActionState {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActionValidationError {
-    WrongKind { expected: ActionKind, got: ActionKind },
+    WrongKind {
+        expected: ActionKind,
+        got: ActionKind,
+    },
     SideEffectsRequired,
     NonDeterministicExecution,
     RetryNotAllowed,
     StateNotAllowed,
     DuplicateId(String),
     EventInputRequired,
-    InvalidInputType { input: String, expected: ActionValueType, got: ActionValueType },
-    InvalidOutputType { output: String, expected: ActionValueType, got: ActionValueType },
+    InvalidInputType {
+        input: String,
+        expected: ActionValueType,
+        got: ActionValueType,
+    },
+    InvalidOutputType {
+        output: String,
+        expected: ActionValueType,
+        got: ActionValueType,
+    },
     MissingRequiredInput(String),
-    UndeclaredInput { node: String, input: String },
-    UndeclaredOutput { primitive: String, output: String },
-    MissingDeclaredOutput { primitive: String, output: String },
-    UndeclaredParameter { node: String, parameter: String },
-    InvalidParameterType { parameter: String, expected: ParameterType, got: ParameterType },
+    UndeclaredInput {
+        node: String,
+        input: String,
+    },
+    UndeclaredOutput {
+        primitive: String,
+        output: String,
+    },
+    MissingDeclaredOutput {
+        primitive: String,
+        output: String,
+    },
+    UndeclaredParameter {
+        node: String,
+        parameter: String,
+    },
+    InvalidParameterType {
+        parameter: String,
+        expected: ParameterType,
+        got: ParameterType,
+    },
     UnknownPrimitive(String),
     CycleDetected,
     MissingNode(String),
-    MissingOutput { node: String, output: String },
-    ActionChainingNotAllowed { node: String, input: String },
+    MissingOutput {
+        node: String,
+        output: String,
+    },
+    ActionChainingNotAllowed {
+        node: String,
+        input: String,
+    },
 }
 
 pub trait ActionPrimitive {

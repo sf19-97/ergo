@@ -24,8 +24,14 @@ pub struct NodeInstance {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NodeKind {
-    Impl { impl_id: String, version: Version },
-    Cluster { cluster_id: String, version: Version },
+    Impl {
+        impl_id: String,
+        version: Version,
+    },
+    Cluster {
+        cluster_id: String,
+        version: Version,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -217,9 +223,16 @@ pub enum ExpandError {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SignatureInferenceError {
-    MissingPrimitive { id: String, version: Version },
+    MissingPrimitive {
+        id: String,
+        version: Version,
+    },
     MissingNode(String),
-    MissingOutput { impl_id: String, version: Version, output: String },
+    MissingOutput {
+        impl_id: String,
+        version: Version,
+        output: String,
+    },
 }
 
 /// D.11: Errors arising from declared signature validation
@@ -301,7 +314,11 @@ pub fn infer_signature<C: PrimitiveCatalog>(
             wireable: false, // F.1: Input ports are never wireable
         };
         // F.1 invariant: Input ports must never be wireable (CLUSTER_SPEC.md §3.2)
-        debug_assert!(!port.wireable, "Invariant F.1 violated: input port '{}' must not be wireable", port.name);
+        debug_assert!(
+            !port.wireable,
+            "Invariant F.1 violated: input port '{}' must not be wireable",
+            port.name
+        );
         inputs.push(port);
     }
 
@@ -344,14 +361,19 @@ pub fn infer_signature<C: PrimitiveCatalog>(
         });
     }
 
-    let has_wireable_event_out = wireable_out_types.iter().any(|t| matches!(t, ValueType::Event));
+    let has_wireable_event_out = wireable_out_types
+        .iter()
+        .any(|t| matches!(t, ValueType::Event));
 
     let kind = if !has_wireable_outputs {
         BoundaryKind::ActionLike
     } else if graph.boundary_inputs.is_empty()
-        && wireable_out_types
-            .iter()
-            .all(|t| matches!(t, ValueType::Number | ValueType::Series | ValueType::Bool | ValueType::String))
+        && wireable_out_types.iter().all(|t| {
+            matches!(
+                t,
+                ValueType::Number | ValueType::Series | ValueType::Bool | ValueType::String
+            )
+        })
     {
         BoundaryKind::SourceLike
     } else if has_wireable_event_out {
@@ -379,7 +401,11 @@ pub fn validate_declared_signature(
 ) -> Result<(), ClusterValidationError> {
     // Check output ports: declared.wireable cannot exceed inferred.wireable
     for declared_port in &declared.outputs {
-        if let Some(inferred_port) = inferred.outputs.iter().find(|p| p.name == declared_port.name) {
+        if let Some(inferred_port) = inferred
+            .outputs
+            .iter()
+            .find(|p| p.name == declared_port.name)
+        {
             // D.11: If declared.wireable == true but inferred.wireable == false, reject
             if declared_port.wireable && !inferred_port.wireable {
                 return Err(ClusterValidationError::WireabilityExceedsInferred {
@@ -392,7 +418,11 @@ pub fn validate_declared_signature(
     // Check input ports: declared.wireable cannot exceed inferred.wireable
     // Note: Per F.1, inferred inputs always have wireable: false, so any declared wireable: true is invalid
     for declared_port in &declared.inputs {
-        if let Some(inferred_port) = inferred.inputs.iter().find(|p| p.name == declared_port.name) {
+        if let Some(inferred_port) = inferred
+            .inputs
+            .iter()
+            .find(|p| p.name == declared_port.name)
+        {
             if declared_port.wireable && !inferred_port.wireable {
                 return Err(ClusterValidationError::WireabilityExceedsInferred {
                     port_name: declared_port.name.clone(),
@@ -404,14 +434,13 @@ pub fn validate_declared_signature(
     Ok(())
 }
 
-fn roots_are_sources(
-    graph: &ExpandedGraph,
-    meta: &HashMap<String, PrimitiveMetadata>,
-) -> bool {
+fn roots_are_sources(graph: &ExpandedGraph, meta: &HashMap<String, PrimitiveMetadata>) -> bool {
     let mut incoming: HashSet<&String> = HashSet::new();
     for edge in &graph.edges {
-        if let (ExpandedEndpoint::NodePort { node_id: _from, .. }, ExpandedEndpoint::NodePort { node_id: to, .. }) =
-            (&edge.from, &edge.to)
+        if let (
+            ExpandedEndpoint::NodePort { node_id: _from, .. },
+            ExpandedEndpoint::NodePort { node_id: to, .. },
+        ) = (&edge.from, &edge.to)
         {
             incoming.insert(to);
         }
@@ -452,9 +481,9 @@ impl ExpandContext {
 #[derive(Debug, Clone)]
 struct ExpandBuild {
     graph: ExpandedGraph,
-        node_mapping: HashMap<NodeId, String>,
-        placeholder_map: HashMap<String, String>,
-    }
+    node_mapping: HashMap<NodeId, String>,
+    placeholder_map: HashMap<String, String>,
+}
 
 fn expand_with_context<L: ClusterLoader>(
     cluster_def: &ClusterDefinition,
@@ -505,12 +534,12 @@ fn expand_with_context<L: ClusterLoader>(
                 cluster_id,
                 version,
             } => {
-                let nested_def = loader
-                    .load(cluster_id, version)
-                    .ok_or_else(|| ExpandError::MissingCluster {
+                let nested_def = loader.load(cluster_id, version).ok_or_else(|| {
+                    ExpandError::MissingCluster {
                         id: cluster_id.clone(),
                         version: version.clone(),
-                    })?;
+                    }
+                })?;
 
                 let bound_nested = apply_literal_bindings(&nested_def, &node.parameter_bindings);
 
@@ -523,9 +552,7 @@ fn expand_with_context<L: ClusterLoader>(
 
                 let mut input_map: HashMap<String, String> = HashMap::new();
                 for input_port in &bound_nested.input_ports {
-                    if let Some(mapped) = nested_build
-                        .placeholder_map
-                        .get(&input_port.maps_to.name)
+                    if let Some(mapped) = nested_build.placeholder_map.get(&input_port.maps_to.name)
                     {
                         input_map.insert(input_port.name.clone(), mapped.clone());
                     }
@@ -534,7 +561,8 @@ fn expand_with_context<L: ClusterLoader>(
 
                 let mut output_map: HashMap<String, ExpandedEndpoint> = HashMap::new();
                 for output_port in &bound_nested.output_ports {
-                    if let Some(node_id) = nested_build.node_mapping.get(&output_port.maps_to.node_id)
+                    if let Some(node_id) =
+                        nested_build.node_mapping.get(&output_port.maps_to.node_id)
                     {
                         output_map.insert(
                             output_port.name.clone(),
@@ -604,11 +632,7 @@ fn build_placeholder_map(
     map
 }
 
-fn external_key(
-    authoring_prefix: &[(String, NodeId)],
-    cluster_id: &str,
-    name: &str,
-) -> String {
+fn external_key(authoring_prefix: &[(String, NodeId)], cluster_id: &str, name: &str) -> String {
     let mut parts: Vec<String> = authoring_prefix
         .iter()
         .map(|(c, n)| format!("{}:{}", c, n))
@@ -717,7 +741,9 @@ fn apply_literal_bindings(
     updated
 }
 
-fn resolve_parameter_bindings(bindings: &HashMap<String, ParameterBinding>) -> HashMap<String, ParameterValue> {
+fn resolve_parameter_bindings(
+    bindings: &HashMap<String, ParameterBinding>,
+) -> HashMap<String, ParameterValue> {
     bindings
         .iter()
         .filter_map(|(name, binding)| match binding {
@@ -769,7 +795,9 @@ mod tests {
 
     impl ClusterLoader for TestLoader {
         fn load(&self, id: &str, version: &Version) -> Option<ClusterDefinition> {
-            self.clusters.get(&(id.to_string(), version.clone())).cloned()
+            self.clusters
+                .get(&(id.to_string(), version.clone()))
+                .cloned()
         }
     }
 
@@ -812,7 +840,9 @@ mod tests {
 
     impl PrimitiveCatalog for TestCatalog {
         fn get(&self, id: &str, version: &Version) -> Option<PrimitiveMetadata> {
-            self.metadata.get(&(id.to_string(), version.clone())).cloned()
+            self.metadata
+                .get(&(id.to_string(), version.clone()))
+                .cloned()
         }
     }
 
@@ -849,7 +879,10 @@ mod tests {
         assert!(expanded.edges.is_empty());
 
         let node = expanded.nodes.values().next().unwrap();
-        assert_eq!(node.authoring_path, vec![("root".to_string(), "p1".to_string())]);
+        assert_eq!(
+            node.authoring_path,
+            vec![("root".to_string(), "p1".to_string())]
+        );
         assert_eq!(node.implementation.impl_id, "prim");
     }
 
@@ -1264,7 +1297,11 @@ mod tests {
         );
 
         // Verify we actually tested multiple inputs
-        assert_eq!(sig.inputs.len(), 2, "Test should verify multiple input ports");
+        assert_eq!(
+            sig.inputs.len(),
+            2,
+            "Test should verify multiple input ports"
+        );
     }
 
     /// E.3 invariant test: ExternalInput must not appear as edge sink after expansion
@@ -1360,7 +1397,10 @@ mod tests {
         let inferred = infer_signature(&expanded, &catalog).unwrap();
 
         // Verify precondition: inferred output has wireable: false
-        assert_eq!(inferred.outputs[0].wireable, false, "Action outputs must be non-wireable");
+        assert_eq!(
+            inferred.outputs[0].wireable, false,
+            "Action outputs must be non-wireable"
+        );
 
         // Create declared signature that attempts to grant wireable: true (invalid)
         let declared = Signature {

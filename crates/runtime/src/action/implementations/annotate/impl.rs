@@ -47,6 +47,9 @@ impl ActionPrimitive for AnnotateAction {
             })
             .unwrap_or_default();
 
-        HashMap::from([("outcome".to_string(), ActionValue::Event(ActionOutcome::Attempted))])
+        HashMap::from([(
+            "outcome".to_string(),
+            ActionValue::Event(ActionOutcome::Attempted),
+        )])
     }
 }

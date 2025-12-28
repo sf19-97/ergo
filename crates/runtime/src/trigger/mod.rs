@@ -159,22 +159,52 @@ pub struct TriggerState {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TriggerValidationError {
-    WrongKind { expected: TriggerKind, got: TriggerKind },
+    WrongKind {
+        expected: TriggerKind,
+        got: TriggerKind,
+    },
     SideEffectsNotAllowed,
     NonDeterministicExecution,
     DuplicateId(String),
-    InvalidInputType { input: String, expected: TriggerValueType, got: TriggerValueType },
-    InvalidOutputType { output: String, expected: TriggerValueType, got: TriggerValueType },
+    InvalidInputType {
+        input: String,
+        expected: TriggerValueType,
+        got: TriggerValueType,
+    },
+    InvalidOutputType {
+        output: String,
+        expected: TriggerValueType,
+        got: TriggerValueType,
+    },
     MissingRequiredInput(String),
-    UndeclaredInput { node: String, input: String },
-    UndeclaredOutput { primitive: String, output: String },
-    MissingDeclaredOutput { primitive: String, output: String },
-    UndeclaredParameter { node: String, parameter: String },
-    InvalidParameterType { parameter: String, expected: ParameterType, got: ParameterType },
+    UndeclaredInput {
+        node: String,
+        input: String,
+    },
+    UndeclaredOutput {
+        primitive: String,
+        output: String,
+    },
+    MissingDeclaredOutput {
+        primitive: String,
+        output: String,
+    },
+    UndeclaredParameter {
+        node: String,
+        parameter: String,
+    },
+    InvalidParameterType {
+        parameter: String,
+        expected: ParameterType,
+        got: ParameterType,
+    },
     UnknownPrimitive(String),
     CycleDetected,
     MissingNode(String),
-    MissingOutput { node: String, output: String },
+    MissingOutput {
+        node: String,
+        output: String,
+    },
 }
 
 pub trait TriggerPrimitive {

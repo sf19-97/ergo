@@ -166,7 +166,10 @@ fn enforce_required_inputs(
 ) -> Result<(), ValidationError> {
     let mut incoming: HashMap<(&String, &str), bool> = HashMap::new();
     for edge in edges {
-        let Endpoint::NodePort { node_id: to, port_name } = &edge.to;
+        let Endpoint::NodePort {
+            node_id: to,
+            port_name,
+        } = &edge.to;
         incoming.insert((to, port_name.as_str()), true);
     }
 
@@ -188,14 +191,21 @@ fn enforce_types(
     edges: &[ValidatedEdge],
 ) -> Result<(), ValidationError> {
     for edge in edges {
-        let Endpoint::NodePort { node_id: from, port_name: from_port } = &edge.from;
-        let Endpoint::NodePort { node_id: to, port_name: to_port } = &edge.to;
+        let Endpoint::NodePort {
+            node_id: from,
+            port_name: from_port,
+        } = &edge.from;
+        let Endpoint::NodePort {
+            node_id: to,
+            port_name: to_port,
+        } = &edge.to;
 
         let from_node = nodes
             .get(from)
             .ok_or_else(|| ValidationError::UnknownNode(from.clone()))?;
-        let to_node =
-            nodes.get(to).ok_or_else(|| ValidationError::UnknownNode(to.clone()))?;
+        let to_node = nodes
+            .get(to)
+            .ok_or_else(|| ValidationError::UnknownNode(to.clone()))?;
 
         let from_type = from_node
             .outputs
@@ -243,7 +253,10 @@ fn enforce_action_gating(
         let Endpoint::NodePort { node_id: to, .. } = &edge.to;
         if let Some(target) = nodes.get(to) {
             if target.kind == PrimitiveKind::Action {
-                let Endpoint::NodePort { node_id: from, port_name: from_port } = &edge.from;
+                let Endpoint::NodePort {
+                    node_id: from,
+                    port_name: from_port,
+                } = &edge.from;
                 if let Some(src) = nodes.get(from) {
                     if src.kind == PrimitiveKind::Trigger {
                         if let Some(meta) = src.outputs.get(from_port) {
