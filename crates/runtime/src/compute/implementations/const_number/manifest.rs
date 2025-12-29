@@ -1,6 +1,7 @@
 use crate::common::{PrimitiveKind, ValueType};
 use crate::compute::{
-    Cadence, ComputePrimitiveManifest, ExecutionSpec, OutputSpec, ParameterSpec, StateSpec,
+    Cadence, ComputePrimitiveManifest, ExecutionSpec, InputSpec, OutputSpec, ParameterSpec,
+    StateSpec,
 };
 
 pub fn const_number_manifest() -> ComputePrimitiveManifest {
@@ -8,7 +9,11 @@ pub fn const_number_manifest() -> ComputePrimitiveManifest {
         id: "const_number".to_string(),
         version: "0.1.0".to_string(),
         kind: PrimitiveKind::Compute,
-        inputs: vec![],
+        inputs: vec![InputSpec {
+            name: "unit".to_string(),
+            value_type: ValueType::Number,
+            required: false,
+        }],
         outputs: vec![OutputSpec {
             name: "value".to_string(),
             value_type: ValueType::Number,

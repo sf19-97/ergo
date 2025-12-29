@@ -219,6 +219,16 @@ pub enum ExpandedEndpoint {
 pub enum ExpandError {
     EmptyCluster,
     MissingCluster { id: String, version: Version },
+    DuplicateInputPort { name: String },
+    DuplicateOutputPort { name: String },
+    DuplicateParameter { name: String },
+    ParameterDefaultTypeMismatch {
+        name: String,
+        expected: ParameterType,
+        got: ParameterType,
+    },
+    SignatureInferenceFailed(SignatureInferenceError),
+    DeclaredSignatureInvalid(ClusterValidationError),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -253,9 +263,12 @@ pub trait PrimitiveCatalog {
 pub fn expand<L: ClusterLoader>(
     cluster_def: &ClusterDefinition,
     loader: &L,
+    catalog: &impl PrimitiveCatalog,
 ) -> Result<ExpandedGraph, ExpandError> {
+    validate_cluster_definition(cluster_def)?;
+
     let mut ctx = ExpandContext::new();
-    let build = expand_with_context(cluster_def, loader, &mut ctx, &[])?;
+    let build = expand_with_context(cluster_def, loader, catalog, &mut ctx, &[])?;
 
     let mut graph = build.graph;
     graph.boundary_inputs = cluster_def.input_ports.clone();
@@ -273,7 +286,66 @@ pub fn expand<L: ClusterLoader>(
         );
     }
 
+    if let Some(declared) = &cluster_def.declared_signature {
+        let inferred = infer_signature(&graph, catalog)
+            .map_err(ExpandError::SignatureInferenceFailed)?;
+        validate_declared_signature(declared, &inferred)
+            .map_err(ExpandError::DeclaredSignatureInvalid)?;
+    }
+
     Ok(graph)
+}
+
+fn validate_cluster_definition(cluster_def: &ClusterDefinition) -> Result<(), ExpandError> {
+    let mut input_names = HashSet::new();
+    for input in &cluster_def.input_ports {
+        if !input_names.insert(input.name.clone()) {
+            return Err(ExpandError::DuplicateInputPort {
+                name: input.name.clone(),
+            });
+        }
+    }
+
+    let mut output_names = HashSet::new();
+    for output in &cluster_def.output_ports {
+        if !output_names.insert(output.name.clone()) {
+            return Err(ExpandError::DuplicateOutputPort {
+                name: output.name.clone(),
+            });
+        }
+    }
+
+    let mut parameter_names = HashSet::new();
+    for param in &cluster_def.parameters {
+        if !parameter_names.insert(param.name.clone()) {
+            return Err(ExpandError::DuplicateParameter {
+                name: param.name.clone(),
+            });
+        }
+
+        if let Some(default) = &param.default {
+            let got = parameter_value_type(default);
+            if got != param.ty {
+                return Err(ExpandError::ParameterDefaultTypeMismatch {
+                    name: param.name.clone(),
+                    expected: param.ty.clone(),
+                    got,
+                });
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn parameter_value_type(value: &ParameterValue) -> ParameterType {
+    match value {
+        ParameterValue::Int(_) => ParameterType::Int,
+        ParameterValue::Number(_) => ParameterType::Number,
+        ParameterValue::Bool(_) => ParameterType::Bool,
+        ParameterValue::String(_) => ParameterType::String,
+        ParameterValue::Enum(_) => ParameterType::Enum,
+    }
 }
 
 /// Infers the cluster's signature from its expanded graph.
@@ -488,6 +560,7 @@ struct ExpandBuild {
 fn expand_with_context<L: ClusterLoader>(
     cluster_def: &ClusterDefinition,
     loader: &L,
+    catalog: &impl PrimitiveCatalog,
     ctx: &mut ExpandContext,
     authoring_prefix: &[(String, NodeId)],
 ) -> Result<ExpandBuild, ExpandError> {
@@ -546,7 +619,8 @@ fn expand_with_context<L: ClusterLoader>(
                 let mut nested_prefix = authoring_prefix.to_vec();
                 nested_prefix.push((cluster_def.id.clone(), node.id.clone()));
 
-                let nested_build = expand_with_context(&bound_nested, loader, ctx, &nested_prefix)?;
+                let nested_build =
+                    expand_with_context(&bound_nested, loader, catalog, ctx, &nested_prefix)?;
 
                 merge_graph(&mut graph, nested_build.graph);
 
@@ -873,7 +947,8 @@ mod tests {
         };
 
         let loader = TestLoader::new();
-        let expanded = expand(&cluster, &loader).unwrap();
+        let catalog = TestCatalog::default();
+        let expanded = expand(&cluster, &loader, &catalog).unwrap();
 
         assert_eq!(expanded.nodes.len(), 1);
         assert!(expanded.edges.is_empty());
@@ -1002,7 +1077,8 @@ mod tests {
         };
 
         let loader = TestLoader::new().with_cluster(inner);
-        let expanded = expand(&outer, &loader).unwrap();
+        let catalog = TestCatalog::default();
+        let expanded = expand(&outer, &loader, &catalog).unwrap();
 
         assert_eq!(expanded.nodes.len(), 3);
 
@@ -1053,7 +1129,8 @@ mod tests {
         };
 
         let loader = TestLoader::new();
-        let expanded = expand(&cluster, &loader).unwrap();
+        let catalog = TestCatalog::default();
+        let expanded = expand(&cluster, &loader, &catalog).unwrap();
 
         let catalog = TestCatalog::default().with_metadata(
             "source",
@@ -1103,7 +1180,8 @@ mod tests {
         };
 
         let loader = TestLoader::new();
-        let expanded = expand(&cluster, &loader).unwrap();
+        let catalog = TestCatalog::default();
+        let expanded = expand(&cluster, &loader, &catalog).unwrap();
 
         let catalog = TestCatalog::default().with_metadata(
             "action",
@@ -1158,7 +1236,8 @@ mod tests {
         };
 
         let loader = TestLoader::new();
-        let expanded = expand(&cluster, &loader).unwrap();
+        let catalog = TestCatalog::default();
+        let expanded = expand(&cluster, &loader, &catalog).unwrap();
 
         let catalog = TestCatalog::default().with_metadata(
             "trigger",
@@ -1213,7 +1292,8 @@ mod tests {
         };
 
         let loader = TestLoader::new();
-        let expanded = expand(&cluster, &loader).unwrap();
+        let catalog = TestCatalog::default();
+        let expanded = expand(&cluster, &loader, &catalog).unwrap();
 
         let catalog = TestCatalog::default().with_metadata(
             "compute",
@@ -1280,7 +1360,8 @@ mod tests {
         };
 
         let loader = TestLoader::new();
-        let expanded = expand(&cluster, &loader).unwrap();
+        let catalog = TestCatalog::default();
+        let expanded = expand(&cluster, &loader, &catalog).unwrap();
 
         let catalog = TestCatalog::default().with_metadata(
             "compute",
@@ -1346,8 +1427,9 @@ mod tests {
         };
 
         let loader = TestLoader::new();
+        let catalog = TestCatalog::default();
         // This should panic due to E.3 assertion
-        let _ = expand(&cluster, &loader);
+        let _ = expand(&cluster, &loader, &catalog);
     }
 
     /// D.11 invariant test: Declared wireability cannot exceed inferred wireability
@@ -1381,28 +1463,55 @@ mod tests {
                 },
             }],
             parameters: empty_parameters(),
-            declared_signature: None,
+            declared_signature: Some(Signature {
+                kind: BoundaryKind::ActionLike,
+                inputs: Vec::new(),
+                outputs: vec![PortSpec {
+                    name: "outcome".to_string(),
+                    ty: ValueType::Event,
+                    cardinality: Cardinality::Single,
+                    wireable: true, // D.11 violation: cannot grant wireability
+                }],
+                has_side_effects: true,
+                is_origin: false,
+            }),
         };
 
         let loader = TestLoader::new();
-        let expanded = expand(&cluster, &loader).unwrap();
-
-        // Action outputs are non-wireable
         let catalog = TestCatalog::default().with_metadata(
             "action",
             "v1",
             meta(PrimitiveKind::Action, &[("outcome", ValueType::Event)]),
         );
 
-        let inferred = infer_signature(&expanded, &catalog).unwrap();
+        let result = expand(&cluster, &loader, &catalog);
 
-        // Verify precondition: inferred output has wireable: false
-        assert_eq!(
-            inferred.outputs[0].wireable, false,
-            "Action outputs must be non-wireable"
+        assert!(
+            matches!(
+                result,
+                Err(ExpandError::DeclaredSignatureInvalid(
+                    ClusterValidationError::WireabilityExceedsInferred { ref port_name }
+                )) if port_name == "outcome"
+            ),
+            "D.11: Declared wireability exceeding inferred must be rejected in production path"
         );
+    }
 
-        // Create declared signature that attempts to grant wireable: true (invalid)
+    #[test]
+    fn validate_declared_signature_rejects_wireability_grant() {
+        let inferred = Signature {
+            kind: BoundaryKind::ActionLike,
+            inputs: Vec::new(),
+            outputs: vec![PortSpec {
+                name: "outcome".to_string(),
+                ty: ValueType::Event,
+                cardinality: Cardinality::Single,
+                wireable: false,
+            }],
+            has_side_effects: true,
+            is_origin: false,
+        };
+
         let declared = Signature {
             kind: BoundaryKind::ActionLike,
             inputs: Vec::new(),
@@ -1410,17 +1519,216 @@ mod tests {
                 name: "outcome".to_string(),
                 ty: ValueType::Event,
                 cardinality: Cardinality::Single,
-                wireable: true, // D.11 violation: cannot grant wireability
+                wireable: true,
             }],
             has_side_effects: true,
             is_origin: false,
         };
 
-        // D.11: Validation must reject this declaration
         let result = validate_declared_signature(&declared, &inferred);
-        assert!(
-            matches!(result, Err(ClusterValidationError::WireabilityExceedsInferred { ref port_name }) if port_name == "outcome"),
-            "D.11: Declared wireability exceeding inferred must be rejected"
+
+        assert!(matches!(
+            result,
+            Err(ClusterValidationError::WireabilityExceedsInferred { port_name })
+                if port_name == "outcome"
+        ));
+    }
+
+    #[test]
+    fn duplicate_input_ports_rejected() {
+        let mut nodes = HashMap::new();
+        nodes.insert(
+            "impl".to_string(),
+            NodeInstance {
+                id: "impl".to_string(),
+                kind: NodeKind::Impl {
+                    impl_id: "compute".to_string(),
+                    version: "v1".to_string(),
+                },
+                parameter_bindings: HashMap::new(),
+            },
         );
+
+        let cluster = ClusterDefinition {
+            id: "dup_inputs".to_string(),
+            version: "v1".to_string(),
+            nodes,
+            edges: Vec::new(),
+            input_ports: vec![
+                InputPortSpec {
+                    name: "in".to_string(),
+                    maps_to: GraphInputPlaceholder {
+                        name: "in_a".to_string(),
+                        ty: ValueType::Number,
+                        required: true,
+                    },
+                },
+                InputPortSpec {
+                    name: "in".to_string(),
+                    maps_to: GraphInputPlaceholder {
+                        name: "in_b".to_string(),
+                        ty: ValueType::Number,
+                        required: true,
+                    },
+                },
+            ],
+            output_ports: Vec::new(),
+            parameters: empty_parameters(),
+            declared_signature: None,
+        };
+
+        let loader = TestLoader::new();
+        let catalog = TestCatalog::default();
+        let result = expand(&cluster, &loader, &catalog);
+
+        assert!(matches!(
+            result,
+            Err(ExpandError::DuplicateInputPort { name }) if name == "in"
+        ));
+    }
+
+    #[test]
+    fn duplicate_output_ports_rejected() {
+        let mut nodes = HashMap::new();
+        nodes.insert(
+            "impl".to_string(),
+            NodeInstance {
+                id: "impl".to_string(),
+                kind: NodeKind::Impl {
+                    impl_id: "compute".to_string(),
+                    version: "v1".to_string(),
+                },
+                parameter_bindings: HashMap::new(),
+            },
+        );
+
+        let cluster = ClusterDefinition {
+            id: "dup_outputs".to_string(),
+            version: "v1".to_string(),
+            nodes,
+            edges: Vec::new(),
+            input_ports: Vec::new(),
+            output_ports: vec![
+                OutputPortSpec {
+                    name: "out".to_string(),
+                    maps_to: OutputRef {
+                        node_id: "impl".to_string(),
+                        port_name: "value".to_string(),
+                    },
+                },
+                OutputPortSpec {
+                    name: "out".to_string(),
+                    maps_to: OutputRef {
+                        node_id: "impl".to_string(),
+                        port_name: "value".to_string(),
+                    },
+                },
+            ],
+            parameters: empty_parameters(),
+            declared_signature: None,
+        };
+
+        let loader = TestLoader::new();
+        let catalog = TestCatalog::default();
+        let result = expand(&cluster, &loader, &catalog);
+
+        assert!(matches!(
+            result,
+            Err(ExpandError::DuplicateOutputPort { name }) if name == "out"
+        ));
+    }
+
+    #[test]
+    fn duplicate_parameters_rejected() {
+        let mut nodes = HashMap::new();
+        nodes.insert(
+            "impl".to_string(),
+            NodeInstance {
+                id: "impl".to_string(),
+                kind: NodeKind::Impl {
+                    impl_id: "compute".to_string(),
+                    version: "v1".to_string(),
+                },
+                parameter_bindings: HashMap::new(),
+            },
+        );
+
+        let cluster = ClusterDefinition {
+            id: "dup_params".to_string(),
+            version: "v1".to_string(),
+            nodes,
+            edges: Vec::new(),
+            input_ports: Vec::new(),
+            output_ports: Vec::new(),
+            parameters: vec![
+                ParameterSpec {
+                    name: "p".to_string(),
+                    ty: ParameterType::Number,
+                    default: None,
+                    required: true,
+                },
+                ParameterSpec {
+                    name: "p".to_string(),
+                    ty: ParameterType::Number,
+                    default: None,
+                    required: true,
+                },
+            ],
+            declared_signature: None,
+        };
+
+        let loader = TestLoader::new();
+        let catalog = TestCatalog::default();
+        let result = expand(&cluster, &loader, &catalog);
+
+        assert!(matches!(
+            result,
+            Err(ExpandError::DuplicateParameter { name }) if name == "p"
+        ));
+    }
+
+    #[test]
+    fn parameter_default_type_mismatch_rejected() {
+        let mut nodes = HashMap::new();
+        nodes.insert(
+            "impl".to_string(),
+            NodeInstance {
+                id: "impl".to_string(),
+                kind: NodeKind::Impl {
+                    impl_id: "compute".to_string(),
+                    version: "v1".to_string(),
+                },
+                parameter_bindings: HashMap::new(),
+            },
+        );
+
+        let cluster = ClusterDefinition {
+            id: "bad_default".to_string(),
+            version: "v1".to_string(),
+            nodes,
+            edges: Vec::new(),
+            input_ports: Vec::new(),
+            output_ports: Vec::new(),
+            parameters: vec![ParameterSpec {
+                name: "flag".to_string(),
+                ty: ParameterType::Bool,
+                default: Some(ParameterValue::Number(1.0)),
+                required: false,
+            }],
+            declared_signature: None,
+        };
+
+        let loader = TestLoader::new();
+        let catalog = TestCatalog::default();
+        let result = expand(&cluster, &loader, &catalog);
+
+        assert!(matches!(
+            result,
+            Err(ExpandError::ParameterDefaultTypeMismatch {
+                name,
+                expected,
+                got
+            }) if name == "flag" && expected == ParameterType::Bool && got == ParameterType::Number
+        ));
     }
 }
