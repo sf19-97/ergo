@@ -6,6 +6,10 @@ pub enum ValidationError {
         expected: PrimitiveKind,
         got: PrimitiveKind,
     },
+    /// X.7: Compute primitives must declare at least one input.
+    NoInputsDeclared {
+        primitive: String,
+    },
     SideEffectsNotAllowed,
     NonDeterministicExecution,
     DuplicateId(String),

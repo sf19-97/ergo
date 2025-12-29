@@ -87,7 +87,7 @@ These invariants hold across all phases. Violation at any point is a system-leve
 
 - **X.1:** Enforced by type system. `PrimitiveKind` enum has exactly four variants.
 - **X.4:** Determinism is tested but not structurally enforced. Acceptable for v0.
-- **X.7:** ✅ **CLOSED.** Enforced in `PrimitiveRegistry::validate_manifest()` at `compute/registry.rs`. Test: `compute_with_zero_inputs_rejected`.
+- **X.7:** ✅ **CLOSED.** Enforced in `compute/registry.rs::validate_manifest` (returns `NoInputsDeclared` when `inputs.is_empty()` for Compute manifests). Test: `compute_with_zero_inputs_rejected` in `compute/registry.rs`.
 - **X.9:** Requires assertion at execution entry that no `ClusterDefinition` or `NodeKind::Cluster` survives.
 
 ---
@@ -116,7 +116,8 @@ These invariants hold across all phases. Violation at any point is a system-leve
 
 ### Notes
 
-- **D.11:** Recently added as editorial hardening. Requires explicit test coverage.
+- **D.5–D.9:** Enforced in `cluster.rs::validate_cluster_definition` (returns `ExpandError::DuplicateInputPort|DuplicateOutputPort|DuplicateParameter|ParameterDefaultTypeMismatch`). Tests: `duplicate_input_ports_rejected`, `duplicate_output_ports_rejected`, `duplicate_parameters_rejected`, `parameter_default_type_mismatch_rejected`.
+- **D.10–D.11:** Enforced during `expand()` via `infer_signature` + `validate_declared_signature` (`ExpandError::DeclaredSignatureInvalid`). Test: `declared_wireability_cannot_exceed_inferred`.
 
 ---
 
