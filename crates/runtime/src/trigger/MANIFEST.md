@@ -228,6 +228,9 @@ The orchestrator does not:
 
 7. Canonical Examples (Mental Model)
 
+> **Note:** Examples marked with state requirements beyond `state: false` must be
+> implemented as clusters, not primitive triggers. See §2.6 for temporal pattern guidance.
+
 gt (greater-than)
 	•	inputs: a:number, b:number
 	•	outputs: event
@@ -238,16 +241,18 @@ gt (greater-than)
 crossover
 	•	inputs: fast:series, slow:series
 	•	outputs: event
-	•	state: true (previous values)
+	•	state: false
 	•	cadence: continuous
 	•	emits event on crossing boundary
+	•	*(Stateful crossover detection requires cluster implementation; see §2.6 Temporal Patterns)*
 
 once
 	•	inputs: event
 	•	outputs: event
-	•	state: true
+	•	state: false
 	•	cadence: event
 	•	emits only first occurrence
+	•	*(Once-only emission requires cluster implementation; see §2.6 Temporal Patterns)*
 
 ⸻
 
