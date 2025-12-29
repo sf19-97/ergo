@@ -1,10 +1,13 @@
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::time::Duration;
 
 use ergo_adapter::{
     capture::ExternalEventRecord, ErrKind, EventId, EventTime, ExternalEvent, GraphId,
     RunTermination, RuntimeHandle, RuntimeInvoker,
 };
+use ergo_runtime::catalog::{CorePrimitiveCatalog, CoreRegistries};
+use ergo_runtime::cluster::ExpandedGraph;
 use serde::{Deserialize, Serialize};
 
 pub mod replay;
@@ -128,12 +131,19 @@ pub struct Supervisor<L: DecisionLog, R: RuntimeInvoker> {
 }
 
 impl<L: DecisionLog> Supervisor<L, RuntimeHandle> {
-    pub fn new(graph_id: GraphId, constraints: Constraints, decision_log: L) -> Self {
+    pub fn new(
+        graph_id: GraphId,
+        constraints: Constraints,
+        decision_log: L,
+        graph: Arc<ExpandedGraph>,
+        catalog: Arc<CorePrimitiveCatalog>,
+        registries: Arc<CoreRegistries>,
+    ) -> Self {
         Self {
             graph_id,
             constraints,
             decision_log,
-            runtime: RuntimeHandle::default(),
+            runtime: RuntimeHandle::new(graph, catalog, registries),
             next_episode_id: 0,
             in_flight: 0,
             recent_invocations: VecDeque::new(),
