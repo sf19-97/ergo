@@ -1,8 +1,13 @@
+---
+Authority: CONTRACTS
+Version: v0
+Last Updated: 2025-12-22
+Derived From: src/runtime/tests.rs::hello_world_graph_executes_with_core_catalog_and_registries
+---
+
 # UI ↔ Runtime Contract
 
 This document defines the exact data structure a UI must emit to drive the Primitive Library runtime.
-
-Extracted from: `src/runtime/tests.rs::hello_world_graph_executes_with_core_catalog_and_registries`
 
 ---
 
@@ -175,6 +180,7 @@ emit_if_true.event → ack_action.event
 ```
 
 Nodes:
+
 | runtime_id | impl_id       | parameters          |
 |------------|---------------|---------------------|
 | src_a      | number_source | value: Number(3.0)  |
@@ -184,6 +190,7 @@ Nodes:
 | act        | ack_action    | accept: Bool(true)  |
 
 Edges:
+
 | from             | to                |
 |------------------|-------------------|
 | src_a:value      | gt1:a             |
@@ -192,6 +199,7 @@ Edges:
 | emit:event       | act:event         |
 
 Boundary outputs:
+
 | name           | maps_to       |
 |----------------|---------------|
 | action_outcome | act:outcome   |

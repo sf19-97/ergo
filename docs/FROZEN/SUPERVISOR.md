@@ -1,3 +1,9 @@
+---
+Authority: FROZEN
+Version: v0
+Last Amended: 2025-12-27
+---
+
 # Execution Supervisor — v0
 
 This document defines the Execution Supervisor: the minimal orchestration layer that governs

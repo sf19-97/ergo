@@ -1,3 +1,9 @@
+---
+Authority: STABLE
+Version: v0
+Last Updated: 2025-12-22
+---
+
 # Authoring Layer
 
 This document defines the authoring layer of the system.

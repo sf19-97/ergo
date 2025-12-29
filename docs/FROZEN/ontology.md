@@ -1,3 +1,9 @@
+---
+Authority: FROZEN
+Version: v0
+Last Amended: 2025-12-28
+---
+
 # Ontology
 
 This document defines the foundational ontology of the system.
@@ -243,24 +249,22 @@ This ontology is the authoritative foundation of the system.
 ---
 
 ## 10. Authoring Layer
+
 The authoring layer enables composition of primitives into reusable, nestable structures.
 It is specified separately in AUTHORING_LAYER.md and CLUSTER_SPEC.md.
-Key Properties
 
-Authoring constructs are called clusters
-Clusters may contain primitives and other clusters (arbitrary nesting)
-Clusters have boundary kinds that mirror the four primitives:
+### Key Properties
 
-SourceLike, ComputeLike, TriggerLike, ActionLike
+- Authoring constructs are called clusters
+- Clusters may contain primitives and other clusters (arbitrary nesting)
+- Clusters have boundary kinds that mirror the four primitives: SourceLike, ComputeLike, TriggerLike, ActionLike
+- The wiring matrix applies to clusters exactly as it applies to primitives
 
-
-The wiring matrix applies to clusters exactly as it applies to primitives
-
-The Invariant
+### The Invariant
 
 All authoring constructs compile away before execution.
 
 At runtime, only the four ontological primitives exist.
 The authoring layer provides ergonomics and modularity without expanding the ontology.
-📍 Specified in: AUTHORING_LAYER.md, CLUSTER_SPEC.md
 
+📍 Specified in: AUTHORING_LAYER.md, CLUSTER_SPEC.md

@@ -1,3 +1,10 @@
+---
+Authority: CANONICAL
+Version: v0.13
+Owner: Claude (Structural Auditor)
+Last Updated: 2025-12-28
+---
+
 # Phase Invariants — v0
 
 **Tracked invariants:** 66

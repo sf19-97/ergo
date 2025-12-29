@@ -1,3 +1,9 @@
+---
+Authority: FROZEN
+Version: v0
+Last Updated: 2025-12-22
+---
+
 # Adapter Contract — v0
 
 This document defines the minimal compliance requirements for adapters that supply data to

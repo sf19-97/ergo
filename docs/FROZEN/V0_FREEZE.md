@@ -1,3 +1,9 @@
+---
+Authority: FROZEN
+Version: v0
+Last Amended: 2025-12-28
+---
+
 # Primitive Ontology & Execution — v0 Freeze
 
 This document defines what is frozen in v0, what may be patched, and where each constraint is specified.
@@ -131,7 +137,7 @@ Behaviors requiring memory (once, count, latch, debounce, edge detection) are
 
 ### 2.7 Determinism
 
-- Given identical inputs and identical internal state, node outputs must be identical.
+- Given identical inputs and identical declared node state, node outputs must be identical.
 - External nondeterminism is confined to the adapter boundary.
 
 📍 Defined in: `execution_model.md`, `adapter_contract.md`
@@ -202,43 +208,52 @@ No v0.x change may:
 If a change requires violating any frozen item in this document, it is a v1 change.
 
 ---
+
 ## 7. Authoring Layer (Not Frozen)
 
 The authoring layer (clusters, macros, fractal composition) is explicitly outside the v0 freeze.
 It may evolve without triggering a v1.
-7.1 What the Authoring Layer Includes
 
-Cluster definitions and boundaries
-Fractal composition (arbitrary nesting)
-Parameter binding and exposure
-Cluster versioning and reuse
-Signature inference algorithms
+### 7.1 What the Authoring Layer Includes
+
+- Cluster definitions and boundaries
+- Fractal composition (arbitrary nesting)
+- Parameter binding and exposure
+- Cluster versioning and reuse
+- Signature inference algorithms
 
 These are specified in AUTHORING_LAYER.md and CLUSTER_SPEC.md.
-7.2 The Frozen Invariant
+
+### 7.2 The Frozen Invariant
+
 The authoring layer must satisfy one invariant:
 
-All authoring constructs compile away before execution.
-The runtime sees only the four primitives and their wiring rules.
+> All authoring constructs compile away before execution.
+> The runtime sees only the four primitives and their wiring rules.
 
 This invariant is frozen. The authoring layer mechanics are not.
-7.3 What This Means
 
-Cluster format may change without breaking v0
-Signature inference may be refined without breaking v0
-New authoring features may be added without breaking v0
+### 7.3 What This Means
+
+- Cluster format may change without breaking v0
+- Signature inference may be refined without breaking v0
+- New authoring features may be added without breaking v0
 
 As long as the expanded graph:
 
-Contains only Source, Compute, Trigger, Action
-Obeys the frozen wiring rules
-Executes per the frozen execution model
+- Contains only Source, Compute, Trigger, Action
+- Obeys the frozen wiring rules
+- Executes per the frozen execution model
 
 📍 Defined in: AUTHORING_LAYER.md, CLUSTER_SPEC.md
+
+---
 
 ## Status
 
 **v0 frozen**
+
+---
 
 ## Authority
 

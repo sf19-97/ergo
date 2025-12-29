@@ -1,8 +1,13 @@
+---
+Authority: CANONICAL
+Version: v0
+Last Updated: 2025-12-22
+Owner: Claude (Structural Auditor)
+---
+
 # Terminology — v0
 
 This document defines canonical terminology for the Primitive Library.
-
-**Authority level:** Canonical (owned by Claude, updated as system evolves)
 
 ---
 
@@ -108,7 +113,7 @@ This term is optional. "Implementation" is preferred in technical documentation.
 | `primitive_id` | `impl_id` | Clarity |
 | `src/*/primitives/` | `src/*/implementations/` | Clarity |
 
-Migration of code symbols is tracked separately from this terminology document.
+Migration of code symbols is tracked in PHASE_INVARIANTS.md.
 
 ---
 

@@ -1,3 +1,9 @@
+---
+Authority: FROZEN
+Version: v0
+Last Amended: 2025-12-28
+---
+
 # Execution Model — v0
 
 This document defines the minimal execution semantics required to implement a correct executor
@@ -164,13 +170,13 @@ If an action fails during execution:
 Within an evaluation pass:
 
 - Node evaluation must be deterministic.
-- Given identical inputs and identical internal state, outputs must be identical.
+- Given identical inputs and identical declared node state (for stateful Compute nodes), outputs must be identical.
 - No internal randomness is permitted.
 - No hidden mutable state is permitted.
 
 External nondeterminism is handled at the adapter boundary.
 
-For Triggers: determinism means identical behavior given identical inputs and lifecycle state.
+For Triggers: determinism means identical behavior given identical inputs (triggers are stateless).
 For Actions: determinism means identical command emission given identical trigger events and parameters.
 
 ---

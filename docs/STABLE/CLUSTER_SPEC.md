@@ -1,3 +1,9 @@
+---
+Authority: STABLE
+Version: v0.2
+Last Updated: 2025-12-22
+---
+
 # Cluster Specification
 
 ---
