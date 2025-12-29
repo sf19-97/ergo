@@ -142,6 +142,7 @@ These invariants hold across all phases. Violation at any point is a system-leve
 
 ### Notes
 
+- **I.3–I.5:** Enforced in `cluster.rs::expand_with_context` during nested cluster processing via `validate_parameter_bindings()`. Errors: `MissingRequiredParameter`, `ParameterBindingTypeMismatch`, `ExposedParameterNotFound`, `ExposedParameterTypeMismatch`. Tests: `required_parameter_missing_rejected`, `parameter_binding_type_mismatch_rejected`, `exposed_parameter_not_in_parent_rejected`, `exposed_parameter_type_mismatch_rejected`. Note: I.4 is enforced symmetrically for both Literal and Exposed bindings.
 - **I.6:** Version constraint validation exists but lacks dedicated test coverage.
 
 ---

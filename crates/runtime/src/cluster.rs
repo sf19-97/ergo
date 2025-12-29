@@ -229,6 +229,31 @@ pub enum ExpandError {
     },
     SignatureInferenceFailed(SignatureInferenceError),
     DeclaredSignatureInvalid(ClusterValidationError),
+    /// I.3: Required parameter has no binding and no default
+    MissingRequiredParameter {
+        cluster_id: String,
+        parameter: String,
+    },
+    /// I.4: Literal binding has wrong type
+    ParameterBindingTypeMismatch {
+        cluster_id: String,
+        parameter: String,
+        expected: ParameterType,
+        got: ParameterType,
+    },
+    /// I.5: Exposed binding references nonexistent parent parameter
+    ExposedParameterNotFound {
+        cluster_id: String,
+        parameter: String,
+        referenced: String,
+    },
+    /// I.4: Exposed binding has incompatible type with parent parameter
+    ExposedParameterTypeMismatch {
+        cluster_id: String,
+        parameter: String,
+        expected: ParameterType,
+        got: ParameterType,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -268,7 +293,7 @@ pub fn expand<L: ClusterLoader>(
     validate_cluster_definition(cluster_def)?;
 
     let mut ctx = ExpandContext::new();
-    let build = expand_with_context(cluster_def, loader, catalog, &mut ctx, &[])?;
+    let build = expand_with_context(cluster_def, loader, catalog, &mut ctx, &[], &[])?;
 
     let mut graph = build.graph;
     graph.boundary_inputs = cluster_def.input_ports.clone();
@@ -550,6 +575,63 @@ impl ExpandContext {
     }
 }
 
+/// I.3/I.4/I.5: Validate parameter bindings for a nested cluster instantiation.
+fn validate_parameter_bindings(
+    nested_def: &ClusterDefinition,
+    bindings: &HashMap<String, ParameterBinding>,
+    parent_parameters: &[ParameterSpec],
+) -> Result<(), ExpandError> {
+    for param_spec in &nested_def.parameters {
+        match bindings.get(&param_spec.name) {
+            None => {
+                // I.3: Required parameter with no default must have a binding
+                if param_spec.required && param_spec.default.is_none() {
+                    return Err(ExpandError::MissingRequiredParameter {
+                        cluster_id: nested_def.id.clone(),
+                        parameter: param_spec.name.clone(),
+                    });
+                }
+            }
+            Some(ParameterBinding::Literal { value }) => {
+                // I.4: Literal binding must have correct type
+                let got = parameter_value_type(value);
+                if got != param_spec.ty {
+                    return Err(ExpandError::ParameterBindingTypeMismatch {
+                        cluster_id: nested_def.id.clone(),
+                        parameter: param_spec.name.clone(),
+                        expected: param_spec.ty.clone(),
+                        got,
+                    });
+                }
+            }
+            Some(ParameterBinding::Exposed { parent_param }) => {
+                // I.5: Exposed binding must reference existing parent parameter
+                // I.4: Exposed binding must have compatible type
+                let parent_spec = parent_parameters.iter().find(|p| &p.name == parent_param);
+                match parent_spec {
+                    None => {
+                        return Err(ExpandError::ExposedParameterNotFound {
+                            cluster_id: nested_def.id.clone(),
+                            parameter: param_spec.name.clone(),
+                            referenced: parent_param.clone(),
+                        });
+                    }
+                    Some(spec) if spec.ty != param_spec.ty => {
+                        return Err(ExpandError::ExposedParameterTypeMismatch {
+                            cluster_id: nested_def.id.clone(),
+                            parameter: param_spec.name.clone(),
+                            expected: param_spec.ty.clone(),
+                            got: spec.ty.clone(),
+                        });
+                    }
+                    Some(_) => {} // Type matches, binding valid
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone)]
 struct ExpandBuild {
     graph: ExpandedGraph,
@@ -563,6 +645,7 @@ fn expand_with_context<L: ClusterLoader>(
     catalog: &impl PrimitiveCatalog,
     ctx: &mut ExpandContext,
     authoring_prefix: &[(String, NodeId)],
+    _parent_parameters: &[ParameterSpec],
 ) -> Result<ExpandBuild, ExpandError> {
     if cluster_def.nodes.is_empty() {
         return Err(ExpandError::EmptyCluster);
@@ -614,13 +697,26 @@ fn expand_with_context<L: ClusterLoader>(
                     }
                 })?;
 
+                // I.3/I.4/I.5: Validate parameter bindings before expansion
+                validate_parameter_bindings(
+                    &nested_def,
+                    &node.parameter_bindings,
+                    &cluster_def.parameters,
+                )?;
+
                 let bound_nested = apply_literal_bindings(&nested_def, &node.parameter_bindings);
 
                 let mut nested_prefix = authoring_prefix.to_vec();
                 nested_prefix.push((cluster_def.id.clone(), node.id.clone()));
 
-                let nested_build =
-                    expand_with_context(&bound_nested, loader, catalog, ctx, &nested_prefix)?;
+                let nested_build = expand_with_context(
+                    &bound_nested,
+                    loader,
+                    catalog,
+                    ctx,
+                    &nested_prefix,
+                    &cluster_def.parameters,
+                )?;
 
                 merge_graph(&mut graph, nested_build.graph);
 
@@ -1729,6 +1825,323 @@ mod tests {
                 expected,
                 got
             }) if name == "flag" && expected == ParameterType::Bool && got == ParameterType::Number
+        ));
+    }
+
+    /// I.3: Required parameter with no default and no binding must be rejected
+    #[test]
+    fn required_parameter_missing_rejected() {
+        // Inner cluster has a required parameter with no default
+        let mut inner_nodes = HashMap::new();
+        inner_nodes.insert(
+            "leaf".to_string(),
+            NodeInstance {
+                id: "leaf".to_string(),
+                kind: NodeKind::Impl {
+                    impl_id: "prim".to_string(),
+                    version: "v1".to_string(),
+                },
+                parameter_bindings: HashMap::new(),
+            },
+        );
+
+        let inner = ClusterDefinition {
+            id: "inner".to_string(),
+            version: "v1".to_string(),
+            nodes: inner_nodes,
+            edges: Vec::new(),
+            input_ports: Vec::new(),
+            output_ports: Vec::new(),
+            parameters: vec![ParameterSpec {
+                name: "required_param".to_string(),
+                ty: ParameterType::Number,
+                default: None, // No default
+                required: true,
+            }],
+            declared_signature: None,
+        };
+
+        // Outer cluster instantiates inner without providing the required binding
+        let mut outer_nodes = HashMap::new();
+        outer_nodes.insert(
+            "nested".to_string(),
+            NodeInstance {
+                id: "nested".to_string(),
+                kind: NodeKind::Cluster {
+                    cluster_id: "inner".to_string(),
+                    version: "v1".to_string(),
+                },
+                parameter_bindings: HashMap::new(), // No binding provided
+            },
+        );
+
+        let outer = ClusterDefinition {
+            id: "outer".to_string(),
+            version: "v1".to_string(),
+            nodes: outer_nodes,
+            edges: Vec::new(),
+            input_ports: Vec::new(),
+            output_ports: Vec::new(),
+            parameters: Vec::new(),
+            declared_signature: None,
+        };
+
+        let loader = TestLoader::new().with_cluster(inner);
+        let catalog = TestCatalog::default();
+        let result = expand(&outer, &loader, &catalog);
+
+        assert!(matches!(
+            result,
+            Err(ExpandError::MissingRequiredParameter {
+                cluster_id,
+                parameter
+            }) if cluster_id == "inner" && parameter == "required_param"
+        ));
+    }
+
+    /// I.4: Literal binding with wrong type must be rejected
+    #[test]
+    fn parameter_binding_type_mismatch_rejected() {
+        // Inner cluster expects a Number parameter
+        let mut inner_nodes = HashMap::new();
+        inner_nodes.insert(
+            "leaf".to_string(),
+            NodeInstance {
+                id: "leaf".to_string(),
+                kind: NodeKind::Impl {
+                    impl_id: "prim".to_string(),
+                    version: "v1".to_string(),
+                },
+                parameter_bindings: HashMap::new(),
+            },
+        );
+
+        let inner = ClusterDefinition {
+            id: "inner".to_string(),
+            version: "v1".to_string(),
+            nodes: inner_nodes,
+            edges: Vec::new(),
+            input_ports: Vec::new(),
+            output_ports: Vec::new(),
+            parameters: vec![ParameterSpec {
+                name: "num_param".to_string(),
+                ty: ParameterType::Number,
+                default: None,
+                required: true,
+            }],
+            declared_signature: None,
+        };
+
+        // Outer cluster provides a Bool when Number is expected
+        let mut outer_nodes = HashMap::new();
+        outer_nodes.insert(
+            "nested".to_string(),
+            NodeInstance {
+                id: "nested".to_string(),
+                kind: NodeKind::Cluster {
+                    cluster_id: "inner".to_string(),
+                    version: "v1".to_string(),
+                },
+                parameter_bindings: HashMap::from([(
+                    "num_param".to_string(),
+                    ParameterBinding::Literal {
+                        value: ParameterValue::Bool(true), // Wrong type!
+                    },
+                )]),
+            },
+        );
+
+        let outer = ClusterDefinition {
+            id: "outer".to_string(),
+            version: "v1".to_string(),
+            nodes: outer_nodes,
+            edges: Vec::new(),
+            input_ports: Vec::new(),
+            output_ports: Vec::new(),
+            parameters: Vec::new(),
+            declared_signature: None,
+        };
+
+        let loader = TestLoader::new().with_cluster(inner);
+        let catalog = TestCatalog::default();
+        let result = expand(&outer, &loader, &catalog);
+
+        assert!(matches!(
+            result,
+            Err(ExpandError::ParameterBindingTypeMismatch {
+                cluster_id,
+                parameter,
+                expected,
+                got
+            }) if cluster_id == "inner"
+                && parameter == "num_param"
+                && expected == ParameterType::Number
+                && got == ParameterType::Bool
+        ));
+    }
+
+    /// I.5: Exposed binding referencing nonexistent parent parameter must be rejected
+    #[test]
+    fn exposed_parameter_not_in_parent_rejected() {
+        // Inner cluster has a parameter that will be exposed
+        let mut inner_nodes = HashMap::new();
+        inner_nodes.insert(
+            "leaf".to_string(),
+            NodeInstance {
+                id: "leaf".to_string(),
+                kind: NodeKind::Impl {
+                    impl_id: "prim".to_string(),
+                    version: "v1".to_string(),
+                },
+                parameter_bindings: HashMap::new(),
+            },
+        );
+
+        let inner = ClusterDefinition {
+            id: "inner".to_string(),
+            version: "v1".to_string(),
+            nodes: inner_nodes,
+            edges: Vec::new(),
+            input_ports: Vec::new(),
+            output_ports: Vec::new(),
+            parameters: vec![ParameterSpec {
+                name: "inner_param".to_string(),
+                ty: ParameterType::Number,
+                default: None,
+                required: true,
+            }],
+            declared_signature: None,
+        };
+
+        // Outer cluster exposes to a parent parameter that doesn't exist
+        let mut outer_nodes = HashMap::new();
+        outer_nodes.insert(
+            "nested".to_string(),
+            NodeInstance {
+                id: "nested".to_string(),
+                kind: NodeKind::Cluster {
+                    cluster_id: "inner".to_string(),
+                    version: "v1".to_string(),
+                },
+                parameter_bindings: HashMap::from([(
+                    "inner_param".to_string(),
+                    ParameterBinding::Exposed {
+                        parent_param: "nonexistent_param".to_string(), // Doesn't exist!
+                    },
+                )]),
+            },
+        );
+
+        let outer = ClusterDefinition {
+            id: "outer".to_string(),
+            version: "v1".to_string(),
+            nodes: outer_nodes,
+            edges: Vec::new(),
+            input_ports: Vec::new(),
+            output_ports: Vec::new(),
+            parameters: Vec::new(), // No parameters defined!
+            declared_signature: None,
+        };
+
+        let loader = TestLoader::new().with_cluster(inner);
+        let catalog = TestCatalog::default();
+        let result = expand(&outer, &loader, &catalog);
+
+        assert!(matches!(
+            result,
+            Err(ExpandError::ExposedParameterNotFound {
+                cluster_id,
+                parameter,
+                referenced
+            }) if cluster_id == "inner"
+                && parameter == "inner_param"
+                && referenced == "nonexistent_param"
+        ));
+    }
+
+    /// I.4: Exposed binding with incompatible type must be rejected
+    #[test]
+    fn exposed_parameter_type_mismatch_rejected() {
+        // Inner cluster expects a Number parameter
+        let mut inner_nodes = HashMap::new();
+        inner_nodes.insert(
+            "leaf".to_string(),
+            NodeInstance {
+                id: "leaf".to_string(),
+                kind: NodeKind::Impl {
+                    impl_id: "prim".to_string(),
+                    version: "v1".to_string(),
+                },
+                parameter_bindings: HashMap::new(),
+            },
+        );
+
+        let inner = ClusterDefinition {
+            id: "inner".to_string(),
+            version: "v1".to_string(),
+            nodes: inner_nodes,
+            edges: Vec::new(),
+            input_ports: Vec::new(),
+            output_ports: Vec::new(),
+            parameters: vec![ParameterSpec {
+                name: "threshold".to_string(),
+                ty: ParameterType::Number, // Expects Number
+                default: None,
+                required: true,
+            }],
+            declared_signature: None,
+        };
+
+        // Outer cluster has an Int parameter but inner expects Number
+        let mut outer_nodes = HashMap::new();
+        outer_nodes.insert(
+            "nested".to_string(),
+            NodeInstance {
+                id: "nested".to_string(),
+                kind: NodeKind::Cluster {
+                    cluster_id: "inner".to_string(),
+                    version: "v1".to_string(),
+                },
+                parameter_bindings: HashMap::from([(
+                    "threshold".to_string(),
+                    ParameterBinding::Exposed {
+                        parent_param: "count".to_string(), // Exposes Int as Number
+                    },
+                )]),
+            },
+        );
+
+        let outer = ClusterDefinition {
+            id: "outer".to_string(),
+            version: "v1".to_string(),
+            nodes: outer_nodes,
+            edges: Vec::new(),
+            input_ports: Vec::new(),
+            output_ports: Vec::new(),
+            parameters: vec![ParameterSpec {
+                name: "count".to_string(),
+                ty: ParameterType::Int, // Int, not Number!
+                default: None,
+                required: true,
+            }],
+            declared_signature: None,
+        };
+
+        let loader = TestLoader::new().with_cluster(inner);
+        let catalog = TestCatalog::default();
+        let result = expand(&outer, &loader, &catalog);
+
+        assert!(matches!(
+            result,
+            Err(ExpandError::ExposedParameterTypeMismatch {
+                cluster_id,
+                parameter,
+                expected,
+                got
+            }) if cluster_id == "inner"
+                && parameter == "threshold"
+                && expected == ParameterType::Number
+                && got == ParameterType::Int
         ));
     }
 }
