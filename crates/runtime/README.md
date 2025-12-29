@@ -60,3 +60,14 @@ let report = run(&expanded, &catalog, &registries, &ctx)?;
 ```
 
 The reference graph is also exercised in `runtime/tests.rs::hello_world_graph_executes_with_core_catalog_and_registries`.
+
+## Golden Spike Tests
+
+Two integration tests serve as canonical reference paths:
+
+| Test | Location | Path |
+|------|----------|------|
+| `hello_world_graph_executes_with_core_catalog_and_registries` | `crates/runtime/src/runtime/tests.rs` | Direct: `runtime::run()` |
+| `supervisor_with_real_runtime_executes_hello_world` | `crates/supervisor/tests/integration.rs` | Orchestrated: `Supervisor::new()` → `RuntimeHandle` → `runtime::run()` |
+
+If either test fails, the execution path is broken.
