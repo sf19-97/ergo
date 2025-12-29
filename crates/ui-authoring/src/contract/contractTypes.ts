@@ -1,7 +1,7 @@
 /**
  * TypeScript mirror of the ExpandedGraph contract.
  *
- * These types exactly match the Rust structures defined in UI_RUNTIME_CONTRACT.md.
+ * These types exactly match the Rust structures defined in docs/CONTRACTS/UI_RUNTIME_CONTRACT.md.
  * This file is the authoritative TypeScript representation of the contract.
  */
 
