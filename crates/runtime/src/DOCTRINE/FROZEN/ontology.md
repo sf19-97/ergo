@@ -73,13 +73,23 @@ Characteristics:
 - Emits events
 - No side effects
 - Deterministic
-- May hold internal state, reset only at engine lifecycle boundaries
+- Stateless. Execution-local bookkeeping (ephemeral scratch during evaluation) is permitted but does not constitute state—it is not observable, serializable, or preserved across evaluations.
 
 Trigger parameters may encode temporal structure only and must not condition on action semantics or outcomes. Trigger governs *when* events propagate; it is blind to downstream action content and consequences.
 
 Trigger and Compute share execution semantics; they differ in declared causal role and wiring permissions.
 
 Trigger establishes causality, not action.
+
+#### Amendment Record
+
+> **Amended 2025-12-28** by Sebastian (Freeze Authority)
+>
+> Prior language stating "May hold internal state" was a semantic error that conflated
+> execution-local bookkeeping with ontological state. This amendment aligns ontology.md
+> with execution_model.md §5 and V0_FREEZE.md §2.6. Triggers are stateless primitives.
+>
+> See: TRG-STATE-1 in PHASE_INVARIANTS.md
 
 ---
 
