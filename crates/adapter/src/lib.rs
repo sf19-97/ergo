@@ -224,7 +224,9 @@ impl RuntimeHandle {
         if matches!(deadline, Some(d) if d.is_zero()) {
             return RunTermination::Aborted;
         }
-        RunTermination::Completed
+        // Truth-preserving behavior: this handle is not wired to the runtime executor.
+        // Returning Completed would be a lie; fail loudly instead.
+        RunTermination::Failed(ErrKind::RuntimeError)
     }
 }
 
@@ -308,5 +310,45 @@ impl RuntimeInvoker for FaultRuntimeHandle {
         }
 
         self.default.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn runtime_handle_returns_failure_when_not_wired() {
+        let handle = RuntimeHandle::default();
+        let rt_ctx = ergo_runtime::runtime::ExecutionContext {
+            trigger_state: HashMap::new(),
+        };
+        let ctx = ExecutionContext::new(rt_ctx);
+        let term = handle.run(
+            &GraphId::new("g"),
+            &EventId::new("e"),
+            &ctx,
+            None,
+        );
+
+        assert_eq!(term, RunTermination::Failed(ErrKind::RuntimeError));
+    }
+
+    #[test]
+    fn runtime_handle_aborts_when_deadline_zero() {
+        let handle = RuntimeHandle::default();
+        let rt_ctx = ergo_runtime::runtime::ExecutionContext {
+            trigger_state: HashMap::new(),
+        };
+        let ctx = ExecutionContext::new(rt_ctx);
+        let term = handle.run(
+            &GraphId::new("g"),
+            &EventId::new("e"),
+            &ctx,
+            Some(Duration::ZERO),
+        );
+
+        assert_eq!(term, RunTermination::Aborted);
     }
 }
