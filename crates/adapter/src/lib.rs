@@ -2,7 +2,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use ergo_runtime::catalog::{CorePrimitiveCatalog, CoreRegistries};
+use ergo_runtime::cluster::ExpandedGraph;
 use ergo_runtime::runtime::ExecutionContext as RuntimeExecutionContext;
+use ergo_runtime::runtime::Registries;
 use serde::{Deserialize, Serialize};
 
 pub mod capture;
@@ -207,10 +210,28 @@ impl ExternalEvent {
     }
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct RuntimeHandle;
+/// RuntimeHandle holds the execution dependencies needed to invoke the runtime.
+/// It is constructed with an expanded graph, primitive catalog, and registries.
+#[derive(Clone)]
+pub struct RuntimeHandle {
+    graph: Arc<ExpandedGraph>,
+    catalog: Arc<CorePrimitiveCatalog>,
+    registries: Arc<CoreRegistries>,
+}
 
 impl RuntimeHandle {
+    pub fn new(
+        graph: Arc<ExpandedGraph>,
+        catalog: Arc<CorePrimitiveCatalog>,
+        registries: Arc<CoreRegistries>,
+    ) -> Self {
+        Self {
+            graph,
+            catalog,
+            registries,
+        }
+    }
+
     pub fn run(
         &self,
         graph_id: &GraphId,
@@ -220,13 +241,25 @@ impl RuntimeHandle {
     ) -> RunTermination {
         let _ = graph_id;
         let _ = event_id;
-        let _ = ctx.inner();
+
         if matches!(deadline, Some(d) if d.is_zero()) {
             return RunTermination::Aborted;
         }
-        // Truth-preserving behavior: this handle is not wired to the runtime executor.
-        // Returning Completed would be a lie; fail loudly instead.
-        RunTermination::Failed(ErrKind::RuntimeError)
+
+        // Create temporary Registries reference from owned CoreRegistries
+        let registries = Registries {
+            sources: &self.registries.sources,
+            computes: &self.registries.computes,
+            triggers: &self.registries.triggers,
+            actions: &self.registries.actions,
+        };
+
+        // Call runtime::run, consume ExecutionReport internally (SUP-2)
+        match ergo_runtime::runtime::run(&self.graph, &*self.catalog, &registries, ctx.inner())
+        {
+            Ok(_report) => RunTermination::Completed,
+            Err(_) => RunTermination::Failed(ErrKind::RuntimeError),
+        }
     }
 }
 
@@ -319,25 +352,9 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn runtime_handle_returns_failure_when_not_wired() {
-        let handle = RuntimeHandle::default();
-        let rt_ctx = ergo_runtime::runtime::ExecutionContext {
-            trigger_state: HashMap::new(),
-        };
-        let ctx = ExecutionContext::new(rt_ctx);
-        let term = handle.run(
-            &GraphId::new("g"),
-            &EventId::new("e"),
-            &ctx,
-            None,
-        );
-
-        assert_eq!(term, RunTermination::Failed(ErrKind::RuntimeError));
-    }
-
-    #[test]
-    fn runtime_handle_aborts_when_deadline_zero() {
-        let handle = RuntimeHandle::default();
+    fn fault_runtime_handle_aborts_when_deadline_zero() {
+        // FaultRuntimeHandle (the test double) should respect deadline=zero
+        let handle = FaultRuntimeHandle::new(RunTermination::Completed);
         let rt_ctx = ergo_runtime::runtime::ExecutionContext {
             trigger_state: HashMap::new(),
         };
@@ -350,5 +367,27 @@ mod tests {
         );
 
         assert_eq!(term, RunTermination::Aborted);
+    }
+
+    #[test]
+    fn fault_runtime_handle_returns_scheduled_outcome() {
+        let handle = FaultRuntimeHandle::new(RunTermination::Completed);
+        handle.push_outcomes(
+            EventId::new("e1"),
+            vec![RunTermination::Failed(ErrKind::NetworkTimeout)],
+        );
+
+        let rt_ctx = ergo_runtime::runtime::ExecutionContext {
+            trigger_state: HashMap::new(),
+        };
+        let ctx = ExecutionContext::new(rt_ctx);
+
+        // First call returns scheduled outcome
+        let term = handle.run(&GraphId::new("g"), &EventId::new("e1"), &ctx, None);
+        assert_eq!(term, RunTermination::Failed(ErrKind::NetworkTimeout));
+
+        // Second call returns default
+        let term = handle.run(&GraphId::new("g"), &EventId::new("e1"), &ctx, None);
+        assert_eq!(term, RunTermination::Completed);
     }
 }

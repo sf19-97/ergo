@@ -74,6 +74,21 @@ Doctrine documents (FROZEN/, STABLE/, CANONICAL/) retain their existing authorit
 
 ---
 
+## Golden Spike Tests
+
+The following tests are designated as canonical execution path anchors:
+
+| Test | Proves | Invariants Exercised |
+|------|--------|---------------------|
+| `hello_world_graph_executes_with_core_catalog_and_registries` | Direct execution path works | R.1–R.7, V.*, X.* |
+| `supervisor_with_real_runtime_executes_hello_world` | Orchestrated execution path works | SUP-1, SUP-2, CXT-1, R.* |
+
+These tests are permanent. Failure indicates invariant regression.
+
+**Authority:** Claude (Doctrine Owner), designated 2025-12-28
+
+---
+
 ## 0. Cross-Phase Invariants
 
 These invariants hold across all phases. Violation at any point is a system-level failure.
