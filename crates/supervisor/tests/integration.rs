@@ -3,13 +3,19 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use ergo_adapter::{EventId, ExternalEvent, ExternalEventKind, GraphId, RunTermination};
+use ergo_adapter::{
+    EventId, ExternalEvent, ExternalEventKind, FaultRuntimeHandle, GraphId, RunTermination,
+    RuntimeHandle,
+};
 use ergo_runtime::catalog::{build_core_catalog, core_registries};
 use ergo_runtime::cluster::{
     ExpandedEdge, ExpandedEndpoint, ExpandedGraph, ExpandedNode, ImplementationInstance,
     OutputPortSpec, OutputRef, ParameterValue,
 };
-use ergo_supervisor::{Constraints, Decision, DecisionLog, DecisionLogEntry, Supervisor};
+use ergo_supervisor::replay::replay;
+use ergo_supervisor::{
+    CapturingSession, Constraints, Decision, DecisionLog, DecisionLogEntry, Supervisor,
+};
 
 /// Test-only DecisionLog that captures entries for verification.
 #[derive(Clone)]
@@ -218,4 +224,57 @@ fn supervisor_with_real_runtime_executes_hello_world() {
         entry.termination
     );
     assert_eq!(entry.retry_count, 0, "Expected no retries");
+}
+
+/// Capture + replay golden spike: capture in-line with execution, then replay and compare decisions.
+#[test]
+fn capturing_session_enables_round_trip_replay() {
+    let graph = Arc::new(build_hello_world_graph());
+    let catalog = Arc::new(build_core_catalog());
+    let registries = Arc::new(core_registries().expect("core registries should build"));
+
+    let runtime = RuntimeHandle::new(graph.clone(), catalog.clone(), registries.clone());
+
+    let mut session = CapturingSession::new(
+        GraphId::new("hello_world_capture"),
+        Constraints::default(),
+        CapturingLog::new(),
+        runtime,
+    );
+
+    let event = ExternalEvent::mechanical(EventId::new("capture_event"), ExternalEventKind::Tick);
+    session.on_event(event);
+
+    let bundle = session.into_bundle();
+
+    assert_eq!(bundle.events.len(), 1, "expected exactly one captured event");
+    assert_eq!(
+        bundle.decisions.len(),
+        1,
+        "expected exactly one captured decision"
+    );
+
+    let replay_decisions = replay(&bundle, FaultRuntimeHandle::new(RunTermination::Completed));
+
+    assert_eq!(
+        replay_decisions.len(),
+        1,
+        "expected exactly one replay decision"
+    );
+
+    assert_eq!(
+        replay_decisions[0].decision,
+        bundle.decisions[0].decision,
+        "decision should round trip through replay"
+    );
+    assert_eq!(
+        replay_decisions[0].termination,
+        bundle.decisions[0].termination,
+        "termination should round trip through replay"
+    );
+    assert_eq!(
+        replay_decisions[0].retry_count,
+        bundle.decisions[0].retry_count,
+        "retry_count should round trip through replay"
+    );
 }

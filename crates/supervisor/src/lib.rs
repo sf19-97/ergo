@@ -10,7 +10,10 @@ use ergo_runtime::catalog::{CorePrimitiveCatalog, CoreRegistries};
 use ergo_runtime::cluster::ExpandedGraph;
 use serde::{Deserialize, Serialize};
 
+mod capture;
 pub mod replay;
+
+pub use capture::{CapturingDecisionLog, CapturingSession};
 
 /// SUP-7: DecisionLog is write-only. No read/query surface is ever exposed.
 pub trait DecisionLog {
