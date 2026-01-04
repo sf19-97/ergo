@@ -25,6 +25,7 @@ Claude Code may:
 - Add tests for untested invariants
 - Perform mechanical refactors tied to specific invariant IDs
 - Report ambiguities that require escalation
+- Create GitHub Issues when instructed by Claude
 
 ---
 
@@ -39,13 +40,13 @@ Claude Code must not:
 - Make "improvements" not tied to an invariant ID
 - Guess when uncertain — must escalate instead
 - Touch files not specified in the task
+- Create GitHub Issues without Claude's approval
 
 ---
 
 ## 4. Task Format (Claude → Claude Code)
 
 Every task must include:
-
 ```
 **Task:** [Brief description]
 
@@ -61,7 +62,6 @@ Every task must include:
 ```
 
 Example:
-
 ```
 **Task:** Fix input port wireability
 
@@ -88,7 +88,6 @@ for input port construction (around line 255)
 ## 5. Report Format (Claude Code → Claude)
 
 After each task, report:
-
 ```
 **Task completed:** [Brief description]
 
@@ -105,7 +104,6 @@ After each task, report:
 ```
 
 Example:
-
 ```
 **Task completed:** Fix input port wireability
 
@@ -130,7 +128,6 @@ If a task requires judgment beyond mechanical implementation:
 1. **Stop immediately**
 2. **Do not attempt the fix**
 3. **Report the ambiguity:**
-
 ```
 **Escalation required**
 
@@ -152,7 +149,6 @@ Examples of escalation triggers:
 ---
 
 ## 7. Approval Flow
-
 ```
 ┌─────────────────────────────────────────────────────┐
 │  1. Claude issues task (with invariant ID)          │
@@ -206,3 +202,66 @@ When committing (if Claude Code has commit access):
 - Format: `fix(F.1): input ports are never wireable`
 - One invariant per commit (unless explicitly bundled)
 - No unrelated changes in the same commit
+
+---
+
+## 11. GitHub Issue Creation
+
+### Prerequisites
+
+Check authentication before creating issues:
+```bash
+gh auth status
+```
+
+### Creating Issues
+
+Use this format:
+```bash
+gh issue create \
+  --repo sf19-97/ergo \
+  --title "[Concise description]" \
+  --label "primary-label,secondary-label" \
+  --body "[Issue body in standard format]"
+```
+
+### Label Reference
+
+| Label | When to Use |
+|-------|-------------|
+| `audit-finding` | Always include for audit-discovered gaps |
+| `invariant-gap` | Enforcement mechanism exists in spec but not code |
+| `doc-drift` | Documentation doesn't match implementation |
+| `v0-known-limitation` | Intentional scope limitation, not a bug |
+| `replay-hardening` | Related to capture/replay integrity |
+| `orchestration` | Related to scheduling, deferrals, temporal concerns |
+| `bug` | Unintentional incorrect behavior |
+| `enhancement` | New feature request |
+
+### Issue Body Format
+
+All issues must follow the standard format:
+```
+## Where
+**Code:** `path/to/file.rs:line-range`
+**Doc:** `path/to/doc.md` (if applicable)
+
+## Why
+**Doctrine:** [Document name] §[section] — "[relevant quote]"
+**Invariant:** [ID if applicable]
+
+## Finding
+[One paragraph description]
+
+## Disposition
+**Status:** [v0-limitation | deferred | doc-error]
+**Blocks:** [Nothing | list what it blocks]
+**Resolution:** [Future branch name | "doc correction only"]
+```
+
+### Rules
+
+1. Never create issues without Claude's approval
+2. Always use the standard issue format (Where/Why/Finding/Disposition)
+3. Escape special characters in `--body` (backticks, quotes)
+4. If labels don't exist, create issue without labels and report to Sebastian
